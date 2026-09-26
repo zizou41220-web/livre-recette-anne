@@ -1,9 +1,9 @@
 const SUPABASE_URL = 'https://iwtuwtvgrocmxfkmidlk.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHV3dHZncm9jbXhma21pZGxrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNTM5NzUsImV4cCI6MjA5MzkyOTk3NX0.ISCfQxrD4dAnygL-teYon-KoJWrzDuTEHFZpe9tslmY';
 
-let supabase = null;
+let supabaseClient = null;
 if (window.supabase) {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 } else {
     console.warn("Supabase n'a pas pu être chargé (bloqueur de pub ?). Mode hors-ligne activé pour l'interface.");
 }
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Initialisation terminée
         
         async function loadRecipes() {
-            if (!supabase) {
+            if (!supabaseClient) {
                 recipesGrid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: var(--accent);">Impossible de charger les recettes (connexion bloquée).</p>`;
                 return;
             }
@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <p>Chargement des recettes en cours...</p>
             </div>`;
 
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('recipes')
                 .select('*')
                 .order('created_at', { ascending: false });
@@ -109,7 +109,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            if (!supabase) {
+            if (!supabaseClient) {
                 alert("Sauvegarde impossible, base de données non connectée.");
                 return;
             }
@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const fileExt = newImageFile.name.split('.').pop();
                 const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
                 
-                const { data: uploadData, error: uploadError } = await supabase.storage
+                const { data: uploadData, error: uploadError } = await supabaseClient.storage
                     .from('recipe-images')
                     .upload(fileName, newImageFile);
                 
@@ -136,7 +136,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     return;
                 }
                 
-                const { data } = supabase.storage.from('recipe-images').getPublicUrl(fileName);
+                const { data } = supabaseClient.storage.from('recipe-images').getPublicUrl(fileName);
                 finalImageUrl = data.publicUrl;
             }
 
@@ -153,14 +153,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
 
             if (editingId) {
-                const { error } = await supabase
+                const { error } = await supabaseClient
                     .from('recipes')
                     .update(recipeData)
                     .eq('id', editingId);
                     
                 if (error) console.error('Erreur de modification:', error);
             } else {
-                const { error } = await supabase
+                const { error } = await supabaseClient
                     .from('recipes')
                     .insert([recipeData]);
                     
@@ -277,7 +277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const icon = card.querySelector('.delete-btn');
                         icon.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
                         
-                        const { error } = await supabase
+                        const { error } = await supabaseClient
                             .from('recipes')
                             .delete()
                             .eq('id', recipe.id);
