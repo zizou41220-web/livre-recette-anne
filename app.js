@@ -1,7 +1,12 @@
 const SUPABASE_URL = 'https://iwtuwtvgrocmxfkmidlk.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3dHV3dHZncm9jbXhma21pZGxrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNTM5NzUsImV4cCI6MjA5MzkyOTk3NX0.ISCfQxrD4dAnygL-teYon-KoJWrzDuTEHFZpe9tslmY';
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let supabase = null;
+if (window.supabase) {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} else {
+    console.warn("Supabase n'a pas pu être chargé (bloqueur de pub ?). Mode hors-ligne activé pour l'interface.");
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     const modal = document.getElementById('recipeModal');
@@ -27,6 +32,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialisation terminée
     
     async function loadRecipes() {
+        if (!supabase) {
+            recipesGrid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: var(--accent);">Impossible de charger les recettes (connexion bloquée).</p>`;
+            return;
+        }
+
         recipesGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem;">
             <i class="fa-solid fa-spinner fa-spin" style="font-size: 3rem; margin-bottom: 1rem;"></i>
             <p>Chargement des recettes en cours...</p>
@@ -97,6 +107,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
+
+        if (!supabase) {
+            alert("Sauvegarde impossible, base de données non connectée.");
+            return;
+        }
         
         const submitBtn = form.querySelector('.submit-btn');
         submitBtn.disabled = true;
