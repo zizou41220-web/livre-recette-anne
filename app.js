@@ -24,9 +24,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentImageUrl = null;
     let newImageFile = null;
 
-    // Load initial recipes from Supabase
-    await loadRecipes();
-
+    // Initialisation terminée
+    
     async function loadRecipes() {
         recipesGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem;">
             <i class="fa-solid fa-spinner fa-spin" style="font-size: 3rem; margin-bottom: 1rem;"></i>
@@ -282,4 +281,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             recipesGrid.appendChild(card);
         });
     }
+
+    // Charger les recettes après avoir attaché tous les événements
+    await loadRecipes();
 });
