@@ -30,6 +30,25 @@
         </main>
     </div>
 
+    <!-- Modal for VIEWING a recipe -->
+    <div id="viewRecipeModal" class="modal hidden">
+        <div class="modal-content glass-panel" style="max-width: 800px;">
+            <span class="close-btn view-close-btn">&times;</span>
+            
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                <h2 id="viewModalTitle" style="margin-bottom: 0; padding-right: 2rem;">Titre de la recette</h2>
+                <span id="viewModalType" class="recipe-type" style="position: static; font-size: 0.9rem;">Type</span>
+            </div>
+            
+            <div id="viewModalKeywords" class="recipe-keywords" style="margin-bottom: 1.5rem;"></div>
+
+            <!-- Content Area -->
+            <div id="viewModalContentArea">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </div>
+
     <!-- Modal for adding/editing a recipe -->
     <div id="recipeModal" class="modal hidden">
         <div class="modal-content glass-panel">
@@ -86,6 +105,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=4"></script>
+    <script src="app.js?v=5"></script>
 </body>
 </html>

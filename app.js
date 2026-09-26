@@ -11,8 +11,10 @@ if (window.supabase) {
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const modal = document.getElementById('recipeModal');
+        const viewModal = document.getElementById('viewRecipeModal');
         const addBtn = document.getElementById('addRecipeBtn');
         const closeBtn = document.querySelector('.close-btn');
+        const viewCloseBtn = document.querySelector('.view-close-btn');
         const form = document.getElementById('recipeForm');
         const recipesGrid = document.getElementById('recipesGrid');
         
@@ -78,9 +80,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             modal.classList.add('hidden');
         });
 
+        viewCloseBtn.addEventListener('click', () => {
+            viewModal.classList.add('hidden');
+        });
+
         window.addEventListener('click', (e) => {
             if (e.target === modal) {
                 modal.classList.add('hidden');
+            }
+            if (e.target === viewModal) {
+                viewModal.classList.add('hidden');
             }
         });
 
@@ -227,10 +236,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 card.innerHTML = `
                     <span class="recipe-type">${typeLabels[recipe.type] || recipe.type}</span>
-                    <h3 class="recipe-title">${recipe.title}</h3>
-                    ${mediaHTML}
+                    <h3 class="recipe-title" style="cursor:pointer;" title="Voir la recette">${recipe.title}</h3>
+                    <div style="cursor:pointer;" title="Voir la recette">
+                        ${mediaHTML}
+                    </div>
                     <div class="recipe-keywords">${keywordsHTML}</div>
-                    <p class="recipe-preview">${recipe.content ? recipe.content : (recipe.url ? 'Recette via lien externe' : 'Recette via photo')}</p>
+                    <p class="recipe-preview" style="cursor:pointer;" title="Voir la recette">${recipe.content ? recipe.content : (recipe.url ? 'Recette via lien externe' : 'Recette via photo')}</p>
                     <div class="recipe-actions">
                         <button class="icon-btn edit-btn" title="Modifier"><i class="fa-solid fa-pen" style="font-size: 0.9rem;"></i></button>
                         ${recipe.url ? `<a href="${recipe.url}" target="_blank" class="icon-btn" title="Ouvrir le lien"><i class="fa-solid fa-external-link-alt" style="font-size: 0.9rem;"></i></a>` : ''}
@@ -238,7 +249,44 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                 `;
 
-                card.querySelector('.edit-btn').addEventListener('click', () => {
+                // Clic pour voir la recette (sur le titre, l'image ou le texte)
+                const openViewModal = () => {
+                    document.getElementById('viewModalTitle').innerText = recipe.title;
+                    document.getElementById('viewModalType').innerText = typeLabels[recipe.type] || recipe.type;
+                    
+                    const keywordsContainer = document.getElementById('viewModalKeywords');
+                    if (recipe.keywords && recipe.keywords.length > 0) {
+                        keywordsContainer.innerHTML = recipe.keywords.map(k => `<span class="keyword-tag">${k}</span>`).join('');
+                        keywordsContainer.style.display = 'flex';
+                    } else {
+                        keywordsContainer.innerHTML = '';
+                        keywordsContainer.style.display = 'none';
+                    }
+
+                    const contentArea = document.getElementById('viewModalContentArea');
+                    let contentHTML = '';
+
+                    if (recipe.image_url) {
+                        contentHTML += `<img src="${recipe.image_url}" style="width: 100%; border-radius: 0.5rem; margin-bottom: 1rem; object-fit: contain; max-height: 500px;" alt="Photo de la recette">`;
+                    }
+                    if (recipe.content) {
+                        contentHTML += `<div style="white-space: pre-wrap; font-size: 1.1rem; line-height: 1.6; color: var(--text-main); background: rgba(0,0,0,0.2); padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 1rem;">${recipe.content}</div>`;
+                    }
+                    if (recipe.url) {
+                        contentHTML += `<a href="${recipe.url}" target="_blank" class="btn primary-btn" style="text-decoration: none; display: inline-flex; justify-content: center; width: 100%;"><i class="fa-solid fa-external-link-alt"></i> Consulter le site de la recette</a>`;
+                    }
+
+                    contentArea.innerHTML = contentHTML;
+                    viewModal.classList.remove('hidden');
+                };
+
+                card.querySelector('.recipe-title').addEventListener('click', openViewModal);
+                card.querySelector('.recipe-preview').addEventListener('click', openViewModal);
+                const mediaDiv = card.querySelector('div[title="Voir la recette"]');
+                if (mediaDiv) mediaDiv.addEventListener('click', openViewModal);
+
+                card.querySelector('.edit-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
                     editingId = recipe.id;
                     document.getElementById('modalTitle').innerText = 'Modifier la recette';
                     document.getElementById('recipeTitle').value = recipe.title;
