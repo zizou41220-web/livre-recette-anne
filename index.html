@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Livre de recettes de Anne</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1><i class="fa-solid fa-utensils"></i> Livre de recettes de Anne</h1>
+            <div class="search-filter-bar">
+                <input type="text" id="searchInput" placeholder="Rechercher une recette, un mot-clé...">
+                <select id="typeFilter">
+                    <option value="all">Tous les types</option>
+                    <option value="entree">Entrée</option>
+                    <option value="plat">Plat principal</option>
+                    <option value="dessert">Dessert</option>
+                    <option value="boisson">Boisson</option>
+                </select>
+                <button id="addRecipeBtn" class="btn primary-btn"><i class="fa-solid fa-plus"></i> Nouvelle Recette</button>
+            </div>
+        </header>
+
+        <main id="recipesGrid" class="recipes-grid">
+            <!-- Recipes will be injected here by JS -->
+        </main>
+    </div>
+
+    <!-- Modal for adding/editing a recipe -->
+    <div id="recipeModal" class="modal hidden">
+        <div class="modal-content glass-panel">
+            <span class="close-btn">&times;</span>
+            <h2 id="modalTitle">Ajouter une recette</h2>
+            
+            <form id="recipeForm">
+                <div class="form-group">
+                    <label for="recipeTitle">Titre de la recette</label>
+                    <input type="text" id="recipeTitle" required placeholder="Ex: Tarte aux pommes">
+                </div>
+                
+                <div class="form-group">
+                    <label for="recipeType">Type</label>
+                    <select id="recipeType" required>
+                        <option value="entree">Entrée</option>
+                        <option value="plat">Plat principal</option>
+                        <option value="dessert">Dessert</option>
+                        <option value="boisson">Boisson</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="recipeKeywords">Mots-clés (séparés par des virgules)</label>
+                    <input type="text" id="recipeKeywords" placeholder="Ex: végétarien, rapide, été">
+                </div>
+
+                <div class="form-tabs">
+                    <button type="button" class="tab-btn active" data-tab="text-tab">Texte</button>
+                    <button type="button" class="tab-btn" data-tab="url-tab">Lien URL</button>
+                    <button type="button" class="tab-btn" data-tab="image-tab">Photo / Livre</button>
+                </div>
+
+                <div class="tab-content active" id="text-tab">
+                    <label for="recipeContent">Ingrédients et instructions</label>
+                    <textarea id="recipeContent" rows="6" placeholder="Saisissez la recette ici..."></textarea>
+                </div>
+
+                <div class="tab-content" id="url-tab">
+                    <label for="recipeUrl">Lien vers la recette</label>
+                    <input type="url" id="recipeUrl" placeholder="https://...">
+                    <small style="color: var(--text-muted); margin-top: 0.25rem;">Vous pourrez cliquer sur ce lien pour voir la recette originale.</small>
+                </div>
+
+                <div class="tab-content" id="image-tab">
+                    <label for="recipeImage">Importer une photo du livre de recettes</label>
+                    <input type="file" id="recipeImage" accept="image/*">
+                    <div id="imagePreview" class="image-preview"></div>
+                </div>
+
+                <button type="submit" class="btn primary-btn submit-btn"><i class="fa-solid fa-save"></i> Enregistrer</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app.js"></script>
+</body>
+</html>
