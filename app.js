@@ -1,7 +1,7 @@
 /**
  * Livre de recettes d'Anne
  * Application PWA Cross-Platform (Smartphone & PC)
- * Scanner & Traitement d'image pour recettes manuscrites + OCR Tesseract
+ * Scanner Multi-Pages & Traitement d'image pour recettes manuscrites + OCR Tesseract
  * Synchronisation Cloud Supabase
  */
 
@@ -28,15 +28,18 @@ if ('serviceWorker' in navigator) {
 let deferredInstallPrompt = null;
 let currentRecipes = [];
 let editingRecipeId = null;
-let currentRecipeImageUrl = null;
-let pendingImageBlob = null;
+let currentRecipeImages = []; // Images existantes en édition (tableau d'URLs)
+let pendingImageBlobs = [];   // Blobs des pages prêtes à être envoyées à Supabase
 let scanFilterOnly = false;
 
-// Variables pour le Studio Scanner
-let originalImage = null;
-let currentFilter = 'scan-doc';
-let currentRotation = 0;
-let currentContrast = 15;
+// Variables pour le Studio Scanner Multi-Pages
+let scannedPages = []; // [{ originalImage, filter, rotation, contrast, canvasBlob, previewUrl }]
+let activePageIndex = 0;
+
+// Variables pour le visualiseur recette
+let viewRecipeActiveImages = [];
+let currentViewPageIndex = 0;
+let currentZoom = 1;
 
 document.addEventListener('DOMContentLoaded', () => {
     initApp();
@@ -52,6 +55,28 @@ function initApp() {
     setupPasteSupport();
 
     loadRecipes();
+}
+
+/**
+ * Utilitaire pour extraire la liste des images d'une recette
+ * Supporte rétroactivement une URL unique string OU un tableau JSON d'URLs
+ */
+function getRecipeImages(recipe) {
+    if (!recipe || !recipe.image_url) return [];
+    if (typeof recipe.image_url === 'string') {
+        const trimmed = recipe.image_url.trim();
+        if (trimmed.startsWith('[')) {
+            try {
+                const parsed = JSON.parse(trimmed);
+                if (Array.isArray(parsed)) return parsed.filter(Boolean);
+            } catch (e) {
+                return [trimmed];
+            }
+        }
+        return [trimmed];
+    }
+    if (Array.isArray(recipe.image_url)) return recipe.image_url.filter(Boolean);
+    return [];
 }
 
 /* ============================================================ */
@@ -235,15 +260,15 @@ function setupNavigationAndModals() {
 }
 
 /* ============================================================ */
-/* 3. STUDIO PHOTO & SCANNER DE RECETTE MANUSCRITE              */
+/* 3. STUDIO PHOTO & SCANNER MULTI-PAGES                        */
 /* ============================================================ */
 function setupScannerStudio() {
     const cameraInput = document.getElementById('cameraDirectInput');
     const galleryInput = document.getElementById('galleryFileInput');
+    const addAnotherPageInput = document.getElementById('addAnotherPageInput');
     const scanUploadZone = document.getElementById('scanUploadZone');
     const scanEditorArea = document.getElementById('scanEditorArea');
     const retakeBtn = document.getElementById('retakePhotoBtn');
-    const canvas = document.getElementById('scannerCanvas');
     const filterPills = document.querySelectorAll('.filter-pill');
     const rotateLeftBtn = document.getElementById('rotateLeftBtn');
     const rotateRightBtn = document.getElementById('rotateRightBtn');
@@ -253,8 +278,8 @@ function setupScannerStudio() {
     const chooseOcrBtn = document.getElementById('chooseOcrBtn');
     const chooseScanDocBtn = document.getElementById('chooseScanDocBtn');
 
-    // Chargement de l'image sélectionnée
-    const handleFileSelect = (file) => {
+    // Chargement d'une image (première page ou page suivante)
+    const handleFileSelect = (file, isAppend = false) => {
         if (!file || !file.type.startsWith('image/')) {
             showToast("Veuillez sélectionner un fichier image valide.", "error");
             return;
@@ -284,22 +309,32 @@ function setupScannerStudio() {
                 const tempCtx = tempCanvas.getContext('2d');
                 tempCtx.drawImage(img, 0, 0, w, h);
 
-                originalImage = new Image();
-                originalImage.onload = () => {
-                    currentFilter = 'scan-doc';
-                    currentRotation = 0;
-                    currentContrast = 15;
-                    contrastRange.value = 15;
-                    contrastVal.textContent = '15';
+                const cleanImg = new Image();
+                cleanImg.onload = () => {
+                    const newPageObj = {
+                        originalImage: cleanImg,
+                        filter: 'scan-doc',
+                        rotation: 0,
+                        contrast: 15
+                    };
 
-                    filterPills.forEach(p => p.classList.toggle('active', p.dataset.filter === 'scan-doc'));
+                    if (!isAppend) {
+                        scannedPages = [newPageObj];
+                        activePageIndex = 0;
+                    } else {
+                        scannedPages.push(newPageObj);
+                        activePageIndex = scannedPages.length - 1;
+                        showToast(`Page ${scannedPages.length} ajoutée à la recette !`, "success");
+                    }
 
                     scanUploadZone.classList.add('hidden');
                     scanEditorArea.classList.remove('hidden');
 
+                    updateScannerPagesBar();
+                    loadActivePageControls();
                     renderScannedImage();
                 };
-                originalImage.src = tempCanvas.toDataURL('image/jpeg', 0.92);
+                cleanImg.src = tempCanvas.toDataURL('image/jpeg', 0.92);
             };
             img.src = e.target.result;
         };
@@ -308,13 +343,23 @@ function setupScannerStudio() {
 
     if (cameraInput) {
         cameraInput.addEventListener('change', (e) => {
-            if (e.target.files && e.target.files[0]) handleFileSelect(e.target.files[0]);
+            if (e.target.files && e.target.files[0]) handleFileSelect(e.target.files[0], false);
         });
     }
 
     if (galleryInput) {
         galleryInput.addEventListener('change', (e) => {
-            if (e.target.files && e.target.files[0]) handleFileSelect(e.target.files[0]);
+            if (e.target.files && e.target.files[0]) handleFileSelect(e.target.files[0], false);
+        });
+    }
+
+    // Ajout d'une page supplémentaire (Page 2, 3...)
+    if (addAnotherPageInput) {
+        addAnotherPageInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                handleFileSelect(e.target.files[0], true);
+                addAnotherPageInput.value = '';
+            }
         });
     }
 
@@ -322,53 +367,128 @@ function setupScannerStudio() {
         retakeBtn.addEventListener('click', resetScannerStudio);
     }
 
-    // Gestion des filtres de rendu de scan
+    // Gestion des filtres
     filterPills.forEach(pill => {
         pill.addEventListener('click', () => {
             filterPills.forEach(p => p.classList.remove('active'));
             pill.classList.add('active');
-            currentFilter = pill.dataset.filter;
-            renderScannedImage();
+            if (scannedPages[activePageIndex]) {
+                scannedPages[activePageIndex].filter = pill.dataset.filter;
+                renderScannedImage();
+            }
         });
     });
 
     // Rotation
     if (rotateLeftBtn) {
         rotateLeftBtn.addEventListener('click', () => {
-            currentRotation = (currentRotation - 90) % 360;
-            renderScannedImage();
+            if (scannedPages[activePageIndex]) {
+                scannedPages[activePageIndex].rotation = (scannedPages[activePageIndex].rotation - 90) % 360;
+                renderScannedImage();
+            }
         });
     }
 
     if (rotateRightBtn) {
         rotateRightBtn.addEventListener('click', () => {
-            currentRotation = (currentRotation + 90) % 360;
-            renderScannedImage();
+            if (scannedPages[activePageIndex]) {
+                scannedPages[activePageIndex].rotation = (scannedPages[activePageIndex].rotation + 90) % 360;
+                renderScannedImage();
+            }
         });
     }
 
     // Curseur de contraste
     if (contrastRange) {
         contrastRange.addEventListener('input', (e) => {
-            currentContrast = parseInt(e.target.value, 10);
-            contrastVal.textContent = currentContrast;
-            renderScannedImage();
+            const val = parseInt(e.target.value, 10);
+            contrastVal.textContent = val;
+            if (scannedPages[activePageIndex]) {
+                scannedPages[activePageIndex].contrast = val;
+                renderScannedImage();
+            }
         });
     }
 
-    // Option 1 : Rédiger automatiquement via OCR
+    // Option 1 : Rédiger automatiquement via OCR (multi-pages)
     if (chooseOcrBtn) {
         chooseOcrBtn.addEventListener('click', async () => {
             await runOcrAndFillRecipe();
         });
     }
 
-    // Option 2 : Conserver le Scan Manuscrit
+    // Option 2 : Conserver le Scan Manuscrit (multi-pages)
     if (chooseScanDocBtn) {
-        chooseScanDocBtn.addEventListener('click', () => {
-            keepAsHandwrittenScan();
+        chooseScanDocBtn.addEventListener('click', async () => {
+            await keepAsHandwrittenScan();
         });
     }
+}
+
+/**
+ * Mise à jour de la barre d'onglets des pages dans le scanner
+ */
+function updateScannerPagesBar() {
+    const list = document.getElementById('scannerPagesList');
+    const addBtnText = document.getElementById('addPageBtnText');
+    if (!list) return;
+
+    list.innerHTML = '';
+    scannedPages.forEach((page, idx) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = `page-chip ${idx === activePageIndex ? 'active' : ''}`;
+        chip.innerHTML = `<span>Page ${idx + 1}</span>`;
+
+        if (scannedPages.length > 1) {
+            const removeIcon = document.createElement('i');
+            removeIcon.className = 'fa-solid fa-xmark remove-page-icon';
+            removeIcon.title = `Supprimer la page ${idx + 1}`;
+            removeIcon.onclick = (e) => {
+                e.stopPropagation();
+                removeScannedPage(idx);
+            };
+            chip.appendChild(removeIcon);
+        }
+
+        chip.addEventListener('click', () => {
+            activePageIndex = idx;
+            updateScannerPagesBar();
+            loadActivePageControls();
+            renderScannedImage();
+        });
+
+        list.appendChild(chip);
+    });
+
+    if (addBtnText) {
+        addBtnText.textContent = `Ajouter la page ${scannedPages.length + 1}...`;
+    }
+}
+
+function removeScannedPage(index) {
+    if (scannedPages.length <= 1) return;
+    scannedPages.splice(index, 1);
+    if (activePageIndex >= scannedPages.length) {
+        activePageIndex = scannedPages.length - 1;
+    }
+    updateScannerPagesBar();
+    loadActivePageControls();
+    renderScannedImage();
+    showToast("Page supprimée.", "info");
+}
+
+function loadActivePageControls() {
+    const page = scannedPages[activePageIndex];
+    if (!page) return;
+
+    const filterPills = document.querySelectorAll('.filter-pill');
+    filterPills.forEach(p => p.classList.toggle('active', p.dataset.filter === page.filter));
+
+    const contrastRange = document.getElementById('contrastRange');
+    const contrastVal = document.getElementById('contrastVal');
+    if (contrastRange) contrastRange.value = page.contrast;
+    if (contrastVal) contrastVal.textContent = page.contrast;
 }
 
 // Support du collage direct (Ctrl+V) depuis le presse-papier
@@ -385,14 +505,22 @@ function setupPasteSupport() {
                 reader.onload = (event) => {
                     const img = new Image();
                     img.onload = () => {
-                        originalImage = img;
-                        currentFilter = 'scan-doc';
-                        currentRotation = 0;
-                        currentContrast = 15;
+                        const newPageObj = {
+                            originalImage: img,
+                            filter: 'scan-doc',
+                            rotation: 0,
+                            contrast: 15
+                        };
+                        scannedPages.push(newPageObj);
+                        activePageIndex = scannedPages.length - 1;
+
                         document.getElementById('scanUploadZone').classList.add('hidden');
                         document.getElementById('scanEditorArea').classList.remove('hidden');
+
+                        updateScannerPagesBar();
+                        loadActivePageControls();
                         renderScannedImage();
-                        showToast("Image collée depuis le presse-papier !", "info");
+                        showToast(`Page ${scannedPages.length} collée depuis le presse-papier !`, "info");
                     };
                     img.src = event.target.result;
                 };
@@ -404,10 +532,8 @@ function setupPasteSupport() {
 }
 
 function resetScannerStudio() {
-    originalImage = null;
-    currentRotation = 0;
-    currentFilter = 'scan-doc';
-    currentContrast = 15;
+    scannedPages = [];
+    activePageIndex = 0;
 
     const cameraInput = document.getElementById('cameraDirectInput');
     const galleryInput = document.getElementById('galleryFileInput');
@@ -420,31 +546,48 @@ function resetScannerStudio() {
 }
 
 /**
- * Traitement de l'image sur Canvas avec filtres de scanne de documents
+ * Rendu de la page active sur le canvas du studio
  */
 function renderScannedImage() {
-    if (!originalImage) return;
+    const page = scannedPages[activePageIndex];
+    if (!page || !page.originalImage) return;
 
     const canvas = document.getElementById('scannerCanvas');
+    renderPageToCanvasElement(page, canvas);
+}
+
+/**
+ * Dessine une page avec ses filtres et rotation sur un élément canvas donné
+ */
+function renderPageToCanvasElement(page, canvas) {
+    const img = page.originalImage;
     const ctx = canvas.getContext('2d');
 
-    // Calcul dimensions avec rotation
-    const rad = (currentRotation * Math.PI) / 180;
-    const isSideways = Math.abs(currentRotation % 180) === 90;
+    const rad = (page.rotation * Math.PI) / 180;
+    const isSideways = Math.abs(page.rotation % 180) === 90;
 
-    canvas.width = isSideways ? originalImage.height : originalImage.width;
-    canvas.height = isSideways ? originalImage.width : originalImage.height;
+    canvas.width = isSideways ? img.height : img.width;
+    canvas.height = isSideways ? img.width : img.height;
 
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate(rad);
-    ctx.drawImage(originalImage, -originalImage.width / 2, -originalImage.height / 2);
+    ctx.drawImage(img, -img.width / 2, -img.height / 2);
     ctx.restore();
 
-    // Application des filtres de document / écriture manuscrite
-    if (currentFilter !== 'original' || currentContrast !== 0) {
-        applyScanFilter(ctx, canvas.width, canvas.height, currentFilter, currentContrast);
+    if (page.filter !== 'original' || page.contrast !== 0) {
+        applyScanFilter(ctx, canvas.width, canvas.height, page.filter, page.contrast);
     }
+}
+
+function createProcessedCanvasForPage(page) {
+    const c = document.createElement('canvas');
+    renderPageToCanvasElement(page, c);
+    return c;
+}
+
+function canvasToBlobPromise(canvas, format = 'image/jpeg', quality = 0.92) {
+    return new Promise(resolve => canvas.toBlob(resolve, format, quality));
 }
 
 /**
@@ -455,7 +598,7 @@ function applyScanFilter(ctx, width, height, mode, contrastVal) {
     const imgData = ctx.getImageData(0, 0, width, height);
     const data = imgData.data;
 
-    // Facteur d'amplification de contraste
+    // Facteur de contraste
     const factor = (259 * (contrastVal + 255)) / (255 * (259 - contrastVal));
 
     for (let i = 0; i < data.length; i += 4) {
@@ -463,7 +606,6 @@ function applyScanFilter(ctx, width, height, mode, contrastVal) {
         let g = data[i + 1];
         let b = data[i + 2];
 
-        // Ajustement contraste
         if (contrastVal !== 0) {
             r = factor * (r - 128) + 128;
             g = factor * (g - 128) + 128;
@@ -476,28 +618,23 @@ function applyScanFilter(ctx, width, height, mode, contrastVal) {
         const gray = 0.299 * r + 0.587 * g + 0.114 * b;
 
         if (mode === 'scan-doc') {
-            // Mode "Scan Nettoyé" : blanchit le papier jauni ou ombré, accentue l'encre
             if (gray > 140) {
-                // Fond de page : pousse vers le blanc pur
                 const boost = Math.min(255, gray + (255 - gray) * 0.82);
                 data[i] = boost;
                 data[i + 1] = boost;
                 data[i + 2] = boost;
             } else {
-                // Écriture manuscrite : accentue la netteté et la densité de l'encre
                 data[i] = Math.max(0, r * 0.65);
                 data[i + 1] = Math.max(0, g * 0.65);
                 data[i + 2] = Math.max(0, b * 0.65);
             }
         } else if (mode === 'scan-bw') {
-            // Mode Scan Noir & Blanc élevé
             const threshold = 142;
             const val = gray < threshold ? 15 : 255;
             data[i] = val;
             data[i + 1] = val;
             data[i + 2] = val;
         } else if (mode === 'vintage') {
-            // Mode Parchemin / Carnet de famille
             const sepiaR = (gray * 1.05) + 25;
             const sepiaG = (gray * 0.95) + 15;
             const sepiaB = (gray * 0.78) + 5;
@@ -505,7 +642,6 @@ function applyScanFilter(ctx, width, height, mode, contrastVal) {
             data[i + 1] = Math.min(255, Math.max(0, sepiaG));
             data[i + 2] = Math.min(255, Math.max(0, sepiaB));
         } else {
-            // Original avec contraste
             data[i] = r;
             data[i + 1] = g;
             data[i + 2] = b;
@@ -516,10 +652,9 @@ function applyScanFilter(ctx, width, height, mode, contrastVal) {
 }
 
 /* ============================================================ */
-/* 4. OPTION 1 : OCR ET RÉDACTION AUTOMATIQUE (TESSERACT)       */
+/* 4. OPTION 1 : OCR MULTI-PAGES ET RÉDACTION AUTOMATIQUE       */
 /* ============================================================ */
 async function runOcrAndFillRecipe() {
-    const canvas = document.getElementById('scannerCanvas');
     const progressContainer = document.getElementById('ocrProgressContainer');
     const progressBar = document.getElementById('ocrProgressBar');
     const statusMsg = document.getElementById('ocrStatusMsg');
@@ -529,77 +664,121 @@ async function runOcrAndFillRecipe() {
         return;
     }
 
+    if (scannedPages.length === 0) {
+        showToast("Aucune page à numériser.", "error");
+        return;
+    }
+
     progressContainer.classList.remove('hidden');
     progressBar.style.width = '10%';
     statusMsg.textContent = "Initialisation du moteur OCR en français...";
 
     try {
-        // Préparer un canvas à haut contraste pour optimiser la reconnaissance
-        const ocrCanvas = document.createElement('canvas');
-        ocrCanvas.width = canvas.width;
-        ocrCanvas.height = canvas.height;
-        const ocrCtx = ocrCanvas.getContext('2d');
-        ocrCtx.drawImage(canvas, 0, 0);
-        applyScanFilter(ocrCtx, ocrCanvas.width, ocrCanvas.height, 'scan-bw', 25);
+        let extractedTexts = [];
+        pendingImageBlobs = [];
 
-        // Appel Tesseract avec logger de progression et CDN francais garanti
-        const result = await Tesseract.recognize(
-            ocrCanvas,
-            'fra',
-            {
-                langPath: 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0',
-                logger: m => {
-                    if (m.status === 'recognizing text') {
-                        const pct = Math.round(m.progress * 100);
-                        progressBar.style.width = `${Math.max(15, pct)}%`;
-                        statusMsg.textContent = `Lecture et transcription de la recette (${pct}%)...`;
-                    } else if (m.status === 'loading language traineddata') {
-                        progressBar.style.width = '35%';
-                        statusMsg.textContent = "Téléchargement du dictionnaire français...";
+        for (let i = 0; i < scannedPages.length; i++) {
+            const page = scannedPages[i];
+            const pageNum = i + 1;
+            const totalPages = scannedPages.length;
+
+            statusMsg.textContent = `Traitement et lecture de la page ${pageNum} sur ${totalPages}...`;
+            progressBar.style.width = `${Math.round((i / totalPages) * 80) + 10}%`;
+
+            // Canvas optimisé N&B pour OCR
+            const ocrCanvas = createProcessedCanvasForPage(page);
+            applyScanFilter(ocrCanvas.getContext('2d'), ocrCanvas.width, ocrCanvas.height, 'scan-bw', 25);
+
+            // Reconnaissance Tesseract
+            const result = await Tesseract.recognize(
+                ocrCanvas,
+                'fra',
+                {
+                    langPath: 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0',
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            const pct = Math.round(m.progress * 100);
+                            statusMsg.textContent = `Page ${pageNum}/${totalPages} : lecture (${pct}%)...`;
+                        }
                     }
                 }
-            }
-        );
+            );
+
+            extractedTexts.push(result.data.text);
+
+            // Préparer le blob haute résolution du scan traité
+            const pageBlob = await canvasToBlobPromise(createProcessedCanvasForPage(page));
+            pendingImageBlobs.push(pageBlob);
+        }
 
         progressBar.style.width = '100%';
-        statusMsg.textContent = "Recette transcrite avec succès !";
+        statusMsg.textContent = "Toutes les pages ont été transcrites avec succès !";
 
-        const rawText = result.data.text;
-        const parsed = parseRecipeFromText(rawText);
-
-        // Sauvegarder l'image du scan pour l'associer à la recette
-        canvas.toBlob((blob) => {
-            pendingImageBlob = blob;
-            const previewUrl = URL.createObjectURL(blob);
-            document.getElementById('imagePreview').innerHTML = `<img src="${previewUrl}" alt="Scan de la recette">`;
-        }, 'image/jpeg', 0.9);
+        // Fusionner les textes de toutes les pages
+        const parsed = parseMultiPageRecipeTexts(extractedTexts);
 
         // Fermer le scanner et pré-remplir le formulaire
         document.getElementById('scannerModal').classList.add('hidden');
         resetRecipeForm();
 
-        document.getElementById('modalTitle').textContent = "Recette Rédigée via Scan";
+        const pageLabel = scannedPages.length > 1 ? ` (${scannedPages.length} pages)` : '';
+        document.getElementById('modalTitle').textContent = `Recette Rédigée via Scan${pageLabel}`;
         document.getElementById('recipeTitle').value = parsed.title || "Nouvelle Recette";
         document.getElementById('recipeType').value = parsed.type;
         document.getElementById('recipeKeywords').value = parsed.keywords.join(', ');
         document.getElementById('recipeContent').value = parsed.content;
 
-        // Activer l'onglet texte
+        renderFormImagePreviews();
         switchFormTab('text-tab');
 
         document.getElementById('recipeModal').classList.remove('hidden');
-        showToast("Recette rédigée avec succès ! Vous pouvez la relire et l'enregistrer.", "success");
+        showToast(`Recette rédigée depuis ${scannedPages.length} page(s) ! Vous pouvez la relire et l'enregistrer.`, "success");
 
     } catch (err) {
         console.error("Erreur OCR:", err);
-        showToast("Erreur lors de la reconnaissance de texte. Vous pouvez conserver la recette en tant que scan.", "error");
+        showToast("Erreur lors de la reconnaissance. Vous pouvez conserver la recette en tant que scan.", "error");
     } finally {
         progressContainer.classList.add('hidden');
     }
 }
 
 /**
- * Analyse et structure le texte brut extrait par l'OCR
+ * Fusionne et structure les textes de plusieurs pages scannées
+ */
+function parseMultiPageRecipeTexts(pageTexts) {
+    if (!pageTexts || pageTexts.length === 0) {
+        return { title: "Recette Scannée", type: "plat", keywords: ["scan"], content: "" };
+    }
+
+    // Analyser la première page pour le titre, type et début des ingrédients
+    const firstPageParsed = parseRecipeFromText(pageTexts[0]);
+
+    if (pageTexts.length === 1) {
+        return firstPageParsed;
+    }
+
+    // S'il y a plusieurs pages, concaténer les suites logiquement
+    let fullContent = firstPageParsed.content;
+
+    for (let i = 1; i < pageTexts.length; i++) {
+        const pageText = pageTexts[i].trim();
+        if (pageText) {
+            fullContent += `\n\n--- [ SUITE PAGE ${i + 1} ] ---\n` + pageText;
+        }
+    }
+
+    const keywords = [...new Set([...firstPageParsed.keywords, `${pageTexts.length} pages`])];
+
+    return {
+        title: firstPageParsed.title,
+        type: firstPageParsed.type,
+        keywords: keywords,
+        content: fullContent
+    };
+}
+
+/**
+ * Analyse et structure le texte brut extrait d'une page
  */
 function parseRecipeFromText(text) {
     if (!text || !text.trim()) {
@@ -613,7 +792,7 @@ function parseRecipeFromText(text) {
 
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     
-    // Détection du Titre (première ligne significative, max 80 caractères)
+    // Détection du Titre (première ligne significative)
     let title = "Recette";
     let startIndex = 0;
     for (let i = 0; i < Math.min(5, lines.length); i++) {
@@ -624,10 +803,8 @@ function parseRecipeFromText(text) {
             break;
         }
     }
-    // Nettoyer le titre
     title = title.replace(/^[\*\-\#\.\:\s]+/, '').slice(0, 70);
 
-    // Détection du type selon les mots-clés présents
     const fullLower = text.toLowerCase();
     let type = 'plat';
     if (fullLower.match(/(g[aâ]teau|tarte|mousse|cr[èe]me|chocolat|sucre|dessert|biscuit|flan|cake|fondant|moelleux|pomme|fraise|confiture)/)) {
@@ -638,7 +815,6 @@ function parseRecipeFromText(text) {
         type = 'boisson';
     }
 
-    // Mots-clés automatiques
     const keywords = ['scan manuscrit'];
     if (fullLower.includes('chocolat')) keywords.push('chocolat');
     if (fullLower.includes('four')) keywords.push('au four');
@@ -646,7 +822,6 @@ function parseRecipeFromText(text) {
     if (fullLower.includes('pomme')) keywords.push('pommes');
     if (fullLower.includes('fromage')) keywords.push('fromage');
 
-    // Structuration en Ingrédients et Préparation
     let ingredients = [];
     let instructions = [];
     let isInstructionsMode = false;
@@ -665,7 +840,6 @@ function parseRecipeFromText(text) {
         if (isInstructionsMode) {
             instructions.push(line);
         } else {
-            // Ligne d'ingrédient
             ingredients.push(line.startsWith('-') || line.startsWith('•') ? line : `- ${line}`);
         }
     }
@@ -685,64 +859,97 @@ function parseRecipeFromText(text) {
 }
 
 /* ============================================================ */
-/* 5. OPTION 2 : CONSERVER LE SCAN MANUSCRIT                    */
+/* 5. OPTION 2 : CONSERVER LE SCAN MANUSCRIT (MULTI-PAGES)      */
 /* ============================================================ */
-function keepAsHandwrittenScan() {
-    const canvas = document.getElementById('scannerCanvas');
+async function keepAsHandwrittenScan() {
+    if (scannedPages.length === 0) {
+        showToast("Aucune page scannée.", "error");
+        return;
+    }
 
-    canvas.toBlob((blob) => {
-        pendingImageBlob = blob;
-        const previewUrl = URL.createObjectURL(blob);
-        document.getElementById('imagePreview').innerHTML = `<img src="${previewUrl}" alt="Aperçu du scan manuscrit">`;
+    pendingImageBlobs = [];
+    for (let page of scannedPages) {
+        const blob = await canvasToBlobPromise(createProcessedCanvasForPage(page));
+        pendingImageBlobs.push(blob);
+    }
 
-        document.getElementById('scannerModal').classList.add('hidden');
-        resetRecipeForm();
+    document.getElementById('scannerModal').classList.add('hidden');
+    resetRecipeForm();
 
-        document.getElementById('modalTitle').textContent = "Enregistrer la Recette Manuscrite";
-        document.getElementById('recipeTitle').value = "";
-        document.getElementById('recipeKeywords').value = "manuscrit, scan carnet";
-        document.getElementById('recipeContent').value = "Recette conservée au format scan manuscrit.";
+    const count = scannedPages.length;
+    const countText = count > 1 ? ` (${count} pages)` : '';
 
-        // Activer l'onglet Photo / Scan
-        switchFormTab('image-tab');
+    document.getElementById('modalTitle').textContent = `Enregistrer la Recette Manuscrite${countText}`;
+    document.getElementById('recipeTitle').value = "";
+    document.getElementById('recipeKeywords').value = `manuscrit, scan${count > 1 ? `, ${count} pages` : ''}`;
+    document.getElementById('recipeContent').value = `Recette conservée au format scan manuscrit${countText}.`;
 
-        document.getElementById('recipeModal').classList.remove('hidden');
-        showToast("Rendu scan prêt ! Entrez un titre pour enregistrer la recette.", "success");
-    }, 'image/jpeg', 0.92);
+    renderFormImagePreviews();
+    switchFormTab('image-tab');
+
+    document.getElementById('recipeModal').classList.remove('hidden');
+    showToast(`Scan de ${count} page(s) prêt ! Entrez un titre pour enregistrer la recette.`, "success");
+}
+
+function renderFormImagePreviews() {
+    const previewContainer = document.getElementById('imagePreview');
+    if (!previewContainer) return;
+
+    previewContainer.innerHTML = '';
+
+    // Afficher les URLs existantes (en modification)
+    currentRecipeImages.forEach((url, idx) => {
+        const wrapper = document.createElement('div');
+        wrapper.style.display = 'inline-block';
+        wrapper.style.margin = '0.35rem';
+        wrapper.style.textAlign = 'center';
+        wrapper.innerHTML = `
+            <img src="${url}" style="max-height: 120px; border-radius: 6px; border: 1px solid var(--glass-border); display: block;" alt="Page ${idx + 1}">
+            <small style="color: var(--text-muted);">Page ${idx + 1}</small>
+        `;
+        previewContainer.appendChild(wrapper);
+    });
+
+    // Afficher les nouveaux blobs en attente d'upload
+    pendingImageBlobs.forEach((blob, idx) => {
+        const url = URL.createObjectURL(blob);
+        const wrapper = document.createElement('div');
+        wrapper.style.display = 'inline-block';
+        wrapper.style.margin = '0.35rem';
+        wrapper.style.textAlign = 'center';
+        const pageNum = currentRecipeImages.length + idx + 1;
+        wrapper.innerHTML = `
+            <img src="${url}" style="max-height: 120px; border-radius: 6px; border: 1px solid var(--accent); display: block;" alt="Page ${pageNum}">
+            <small style="color: #fda4af;">Nouvelle Page ${pageNum}</small>
+        `;
+        previewContainer.appendChild(wrapper);
+    });
 }
 
 /* ============================================================ */
-/* 6. GESTION DU FORMULAIRE ET ONGLETS                          */
+/* 6. GESTION DU FORMULAIRE ET ENREGISTREMENT                   */
 /* ============================================================ */
 function setupRecipeForm() {
     const form = document.getElementById('recipeForm');
     const tabBtns = document.querySelectorAll('.form-tabs .tab-btn');
     const recipeImageInput = document.getElementById('recipeImage');
-    const imagePreview = document.getElementById('imagePreview');
     const launchScannerFromFormBtn = document.getElementById('launchScannerFromFormBtn');
     const formScanToTextBtn = document.getElementById('formScanToTextBtn');
 
-    // Basculement des onglets
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => switchFormTab(btn.dataset.tab));
     });
 
-    // Sélecteur d'image standard
     if (recipeImageInput) {
         recipeImageInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                pendingImageBlob = file;
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    imagePreview.innerHTML = `<img src="${event.target.result}" alt="Aperçu de la photo">`;
-                };
-                reader.readAsDataURL(file);
+            if (e.target.files && e.target.files[0]) {
+                pendingImageBlobs.push(e.target.files[0]);
+                renderFormImagePreviews();
+                recipeImageInput.value = '';
             }
         });
     }
 
-    // Ouvrir le scanner depuis le formulaire
     if (launchScannerFromFormBtn) {
         launchScannerFromFormBtn.addEventListener('click', () => {
             document.getElementById('recipeModal').classList.add('hidden');
@@ -759,7 +966,6 @@ function setupRecipeForm() {
         });
     }
 
-    // Soumission du formulaire
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
@@ -772,32 +978,43 @@ function setupRecipeForm() {
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enregistrement en cours...';
 
-        let finalImageUrl = currentRecipeImageUrl;
+        let finalImages = [...currentRecipeImages];
 
-        // Upload de la nouvelle image / scan si présent
-        if (pendingImageBlob) {
-            const fileName = `recipe_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.jpg`;
-            
-            const { data: uploadData, error: uploadError } = await supabaseClient.storage
-                .from('recipe-images')
-                .upload(fileName, pendingImageBlob, {
-                    contentType: 'image/jpeg',
-                    upsert: true
-                });
+        // Téléversement de toutes les nouvelles pages vers Supabase Storage
+        if (pendingImageBlobs.length > 0) {
+            for (let i = 0; i < pendingImageBlobs.length; i++) {
+                const blob = pendingImageBlobs[i];
+                const fileName = `recipe_${Date.now()}_p${i + 1}_${Math.random().toString(36).substring(2, 7)}.jpg`;
 
-            if (uploadError) {
-                console.error("Erreur d'upload image:", uploadError);
-                showToast("Erreur lors de l'enregistrement de l'image.", "error");
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fa-solid fa-save"></i> Enregistrer la recette';
-                return;
+                const { error: uploadError } = await supabaseClient.storage
+                    .from('recipe-images')
+                    .upload(fileName, blob, {
+                        contentType: 'image/jpeg',
+                        upsert: true
+                    });
+
+                if (uploadError) {
+                    console.error("Erreur d'upload image:", uploadError);
+                    showToast(`Erreur lors du téléversement de la page ${i + 1}.`, "error");
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fa-solid fa-save"></i> Enregistrer la recette';
+                    return;
+                }
+
+                const { data: publicUrlData } = supabaseClient.storage
+                    .from('recipe-images')
+                    .getPublicUrl(fileName);
+
+                finalImages.push(publicUrlData.publicUrl);
             }
+        }
 
-            const { data: publicUrlData } = supabaseClient.storage
-                .from('recipe-images')
-                .getPublicUrl(fileName);
-
-            finalImageUrl = publicUrlData.publicUrl;
+        // Format de stockage : URL unique string si 1 seule page, ou JSON array si plusieurs pages
+        let finalImageUrl = null;
+        if (finalImages.length === 1) {
+            finalImageUrl = finalImages[0];
+        } else if (finalImages.length > 1) {
+            finalImageUrl = JSON.stringify(finalImages);
         }
 
         const keywordsStr = document.getElementById('recipeKeywords').value;
@@ -855,12 +1072,12 @@ function switchFormTab(tabId) {
 
 function resetRecipeForm() {
     editingRecipeId = null;
-    currentRecipeImageUrl = null;
-    pendingImageBlob = null;
+    currentRecipeImages = [];
+    pendingImageBlobs = [];
 
     document.getElementById('recipeForm').reset();
     document.getElementById('modalTitle').textContent = "Ajouter une recette";
-    document.getElementById('imagePreview').innerHTML = '';
+    renderFormImagePreviews();
     switchFormTab('text-tab');
 }
 
@@ -958,14 +1175,17 @@ function renderRecipes() {
         const card = document.createElement('div');
         card.className = 'recipe-card';
 
+        const images = getRecipeImages(recipe);
+        const pageCount = images.length;
         const isScan = (recipe.keywords && recipe.keywords.some(k => k.toLowerCase().includes('scan') || k.toLowerCase().includes('manuscrit'))) ||
-            (!recipe.content && recipe.image_url);
+            (!recipe.content && pageCount > 0);
 
         let mediaHTML = '';
-        if (recipe.image_url) {
+        if (pageCount > 0) {
             mediaHTML = `
                 <div class="recipe-media-preview" title="Cliquer pour voir la recette">
-                    <img src="${recipe.image_url}" class="recipe-image-thumb" alt="${recipe.title}">
+                    <img src="${images[0]}" class="recipe-image-thumb" alt="${recipe.title}">
+                    ${pageCount > 1 ? `<span class="pages-count-badge"><i class="fa-solid fa-copy"></i> ${pageCount} pages</span>` : ''}
                     <div class="media-hover-overlay">
                         <i class="fa-solid fa-magnifying-glass-plus"></i>
                     </div>
@@ -977,10 +1197,12 @@ function renderRecipes() {
             keywordsHTML = recipe.keywords.slice(0, 4).map(k => `<span class="keyword-tag">${k}</span>`).join('');
         }
 
+        const scanBadgeLabel = pageCount > 1 ? `Manuscrit (${pageCount} p.)` : 'Manuscrit / Scan';
+
         card.innerHTML = `
             <div class="card-badges">
                 <span class="recipe-type">${typeLabels[recipe.type] || recipe.type}</span>
-                ${isScan ? `<span class="recipe-scan-tag"><i class="fa-solid fa-signature"></i> Manuscrit / Scan</span>` : ''}
+                ${isScan ? `<span class="recipe-scan-tag"><i class="fa-solid fa-signature"></i> ${scanBadgeLabel}</span>` : ''}
             </div>
 
             <h3 class="recipe-title" style="cursor:pointer;" title="Voir la recette">${recipe.title}</h3>
@@ -990,7 +1212,7 @@ function renderRecipes() {
             ${keywordsHTML ? `<div class="recipe-keywords">${keywordsHTML}</div>` : ''}
 
             <p class="recipe-preview" style="cursor:pointer;" title="Voir la recette">
-                ${recipe.content ? recipe.content : (recipe.url ? '🔗 Recette via lien externe' : '📜 Recette au format scan manuscrit')}
+                ${recipe.content ? recipe.content : (recipe.url ? '🔗 Recette via lien externe' : `📜 Recette manuscrite (${pageCount} page${pageCount > 1 ? 's' : ''})`)}
             </p>
 
             <div class="recipe-actions">
@@ -1001,7 +1223,6 @@ function renderRecipes() {
             </div>
         `;
 
-        // Événements d'ouverture
         const openView = () => openViewModal(recipe);
         card.querySelector('.recipe-title').addEventListener('click', openView);
         card.querySelector('.recipe-preview').addEventListener('click', openView);
@@ -1009,13 +1230,11 @@ function renderRecipes() {
         const mediaElem = card.querySelector('.recipe-media-preview');
         if (mediaElem) mediaElem.addEventListener('click', openView);
 
-        // Modification
         card.querySelector('.edit-btn').addEventListener('click', (e) => {
             e.stopPropagation();
             openEditModal(recipe);
         });
 
-        // Suppression
         card.querySelector('.delete-btn').addEventListener('click', async (e) => {
             e.stopPropagation();
             if (confirm(`Supprimer définitivement la recette « ${recipe.title} » ?`)) {
@@ -1045,8 +1264,6 @@ function renderRecipes() {
 /* ============================================================ */
 /* 8. VISUALISATION COMPLÈTE & ZOOM HAUTE DÉFINITION           */
 /* ============================================================ */
-let currentZoom = 1;
-
 function openViewModal(recipe) {
     const viewModal = document.getElementById('viewRecipeModal');
     const titleElem = document.getElementById('viewModalTitle');
@@ -1056,6 +1273,11 @@ function openViewModal(recipe) {
     const contentArea = document.getElementById('viewModalContentArea');
     const printBtn = document.getElementById('viewPrintBtn');
     const editBtn = document.getElementById('viewEditBtn');
+
+    const pagesNav = document.getElementById('viewPagesNav');
+    const pageIndicator = document.getElementById('viewPageIndicator');
+    const prevPageBtn = document.getElementById('viewPrevPageBtn');
+    const nextPageBtn = document.getElementById('viewNextPageBtn');
 
     titleElem.textContent = recipe.title;
 
@@ -1067,11 +1289,17 @@ function openViewModal(recipe) {
     };
     typeElem.textContent = typeLabels[recipe.type] || recipe.type;
 
+    viewRecipeActiveImages = getRecipeImages(recipe);
+    currentViewPageIndex = 0;
+
     const isScan = (recipe.keywords && recipe.keywords.some(k => k.toLowerCase().includes('scan') || k.toLowerCase().includes('manuscrit'))) ||
-        (!recipe.content && recipe.image_url);
+        (!recipe.content && viewRecipeActiveImages.length > 0);
 
     if (isScan) {
         scanBadge.classList.remove('hidden');
+        scanBadge.innerHTML = viewRecipeActiveImages.length > 1 ?
+            `<i class="fa-solid fa-signature"></i> Scan (${viewRecipeActiveImages.length} pages)` :
+            `<i class="fa-solid fa-signature"></i> Scan Manuscrit`;
     } else {
         scanBadge.classList.add('hidden');
     }
@@ -1084,14 +1312,20 @@ function openViewModal(recipe) {
         keywordsElem.style.display = 'none';
     }
 
+    // Gestion de la barre multi-pages
+    if (viewRecipeActiveImages.length > 1) {
+        pagesNav.classList.remove('hidden');
+    } else {
+        pagesNav.classList.add('hidden');
+    }
+
     let contentHTML = '';
 
-    // Si image / scan présent : afficher le visualiseur avec Zoom HD
-    if (recipe.image_url) {
+    if (viewRecipeActiveImages.length > 0) {
         contentHTML += `
             <div class="scan-hd-viewer-container">
                 <div class="scan-toolbar">
-                    <span><i class="fa-solid fa-magnifying-glass"></i> Visualiseur HD</span>
+                    <span id="viewerPageTitle"><i class="fa-solid fa-magnifying-glass"></i> Visualiseur HD</span>
                     <div style="display: flex; gap: 0.5rem; align-items: center;">
                         <button type="button" class="icon-control-btn" id="zoomOutBtn" title="Dézoomer"><i class="fa-solid fa-minus"></i></button>
                         <span id="zoomLevelDisplay" style="font-size: 0.8rem; min-width: 45px; text-align: center;">100%</span>
@@ -1100,7 +1334,7 @@ function openViewModal(recipe) {
                     </div>
                 </div>
                 <div class="zoom-viewport" id="zoomViewport">
-                    <img src="${recipe.image_url}" id="hdZoomImage" class="zoom-image" alt="${recipe.title}">
+                    <img src="${viewRecipeActiveImages[0]}" id="hdZoomImage" class="zoom-image" alt="${recipe.title}">
                 </div>
             </div>`;
     }
@@ -1115,8 +1349,32 @@ function openViewModal(recipe) {
 
     contentArea.innerHTML = contentHTML;
 
+    // Mise à jour de la navigation de page
+    const updateViewPage = (idx) => {
+        if (viewRecipeActiveImages.length === 0) return;
+        currentViewPageIndex = (idx + viewRecipeActiveImages.length) % viewRecipeActiveImages.length;
+        if (pageIndicator) {
+            pageIndicator.textContent = `Page ${currentViewPageIndex + 1} sur ${viewRecipeActiveImages.length}`;
+        }
+        const zoomImg = document.getElementById('hdZoomImage');
+        if (zoomImg) {
+            zoomImg.src = viewRecipeActiveImages[currentViewPageIndex];
+            currentZoom = 1;
+            zoomImg.style.transform = `scale(1)`;
+            const zoomDisplay = document.getElementById('zoomLevelDisplay');
+            if (zoomDisplay) zoomDisplay.textContent = '100%';
+        }
+    };
+
+    if (prevPageBtn) prevPageBtn.onclick = () => updateViewPage(currentViewPageIndex - 1);
+    if (nextPageBtn) nextPageBtn.onclick = () => updateViewPage(currentViewPageIndex + 1);
+
+    if (viewRecipeActiveImages.length > 1) {
+        updateViewPage(0);
+    }
+
     // Configuration des boutons de zoom
-    if (recipe.image_url) {
+    if (viewRecipeActiveImages.length > 0) {
         currentZoom = 1;
         const zoomImg = document.getElementById('hdZoomImage');
         const zoomIn = document.getElementById('zoomInBtn');
@@ -1127,8 +1385,8 @@ function openViewModal(recipe) {
 
         const updateZoom = (z) => {
             currentZoom = Math.min(3.5, Math.max(0.7, z));
-            zoomImg.style.transform = `scale(${currentZoom})`;
-            zoomDisplay.textContent = `${Math.round(currentZoom * 100)}%`;
+            if (zoomImg) zoomImg.style.transform = `scale(${currentZoom})`;
+            if (zoomDisplay) zoomDisplay.textContent = `${Math.round(currentZoom * 100)}%`;
         };
 
         if (zoomIn) zoomIn.addEventListener('click', () => updateZoom(currentZoom + 0.3));
@@ -1143,10 +1401,10 @@ function openViewModal(recipe) {
         }
     }
 
-    // Bouton imprimer
+    // Impression
     printBtn.onclick = () => window.print();
 
-    // Bouton modifier depuis la vue
+    // Modification
     editBtn.onclick = () => {
         viewModal.classList.add('hidden');
         openEditModal(recipe);
@@ -1157,8 +1415,8 @@ function openViewModal(recipe) {
 
 function openEditModal(recipe) {
     editingRecipeId = recipe.id;
-    currentRecipeImageUrl = recipe.image_url || null;
-    pendingImageBlob = null;
+    currentRecipeImages = getRecipeImages(recipe);
+    pendingImageBlobs = [];
 
     document.getElementById('modalTitle').textContent = "Modifier la recette";
     document.getElementById('recipeTitle').value = recipe.title;
@@ -1167,12 +1425,11 @@ function openEditModal(recipe) {
     document.getElementById('recipeContent').value = recipe.content || '';
     document.getElementById('recipeUrl').value = recipe.url || '';
 
-    const imagePreview = document.getElementById('imagePreview');
-    imagePreview.innerHTML = currentRecipeImageUrl ? `<img src="${currentRecipeImageUrl}" alt="Aperçu">` : '';
+    renderFormImagePreviews();
 
     if (recipe.content) {
         switchFormTab('text-tab');
-    } else if (recipe.image_url) {
+    } else if (currentRecipeImages.length > 0) {
         switchFormTab('image-tab');
     } else if (recipe.url) {
         switchFormTab('url-tab');

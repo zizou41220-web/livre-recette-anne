@@ -146,6 +146,22 @@
 
             <!-- Étape 2 : Atelier de Retouche & Rendu (affiché après sélection) -->
             <div id="scanEditorArea" class="scan-editor-area hidden">
+                <!-- Barre des pages numérotées -->
+                <div class="scanner-pages-bar">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">
+                            <i class="fa-solid fa-copy"></i> Pages :
+                        </span>
+                        <div class="pages-tabs-row" id="scannerPagesList">
+                            <!-- Injected: <button class="page-chip active">Page 1</button> -->
+                        </div>
+                    </div>
+                    <label for="addAnotherPageInput" class="btn mini-btn ghost-btn add-page-btn" title="Prendre en photo la page suivante (ex: verso, préparation)">
+                        <i class="fa-solid fa-plus"></i> <span id="addPageBtnText">Ajouter la page suivante...</span>
+                    </label>
+                    <input type="file" id="addAnotherPageInput" accept="image/*" class="hidden-input">
+                </div>
+
                 <div class="scanner-preview-container">
                     <canvas id="scannerCanvas"></canvas>
                 </div>
@@ -260,6 +276,17 @@
             </div>
             
             <div id="viewModalKeywords" class="recipe-keywords"></div>
+
+            <!-- Navigation entre les pages pour les recettes multi-pages -->
+            <div id="viewPagesNav" class="view-pages-nav hidden">
+                <button type="button" id="viewPrevPageBtn" class="icon-control-btn" title="Page précédente">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <span id="viewPageIndicator" style="font-weight: 600; font-size: 0.9rem; color: #fda4af;">Page 1 sur 2</span>
+                <button type="button" id="viewNextPageBtn" class="icon-control-btn" title="Page suivante">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
 
             <!-- Content Area (Image / Scan / Texte / URL) -->
             <div id="viewModalContentArea" class="view-content-area">
