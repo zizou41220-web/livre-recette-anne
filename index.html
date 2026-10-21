@@ -2,109 +2,435 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Livre de recettes de Anne</title>
-    <link rel="stylesheet" href="style.css?v=3">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Livre de recettes d'Anne</title>
+    
+    <!-- PWA & Mobile Meta Tags -->
+    <meta name="theme-color" content="#f43f5e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Recettes Anne">
+    <meta name="application-name" content="Recettes Anne">
+    <meta name="description" content="Livre de recettes de famille et scans manuscrits d'Anne, synchronisé sur smartphone et PC.">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="icon-192.png">
+
+    <!-- Styles & Fonts -->
+    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div class="app-container">
-        <header>
-            <h1><i class="fa-solid fa-utensils"></i> Livre de recettes de Anne</h1>
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-brand">
+                <div class="brand-icon">
+                    <img src="icon-192.png" alt="Logo Recettes Anne" class="header-logo-img">
+                </div>
+                <div>
+                    <h1>Livre de recettes d'Anne</h1>
+                    <p class="subtitle">Carnet de cuisine familial & scans manuscrits • Smartphone & PC</p>
+                </div>
+            </div>
+
+            <!-- Top Actions -->
+            <div class="header-actions">
+                <button id="openScannerBtn" class="btn scan-btn" title="Prendre une photo et rédiger ou scanner">
+                    <i class="fa-solid fa-camera"></i>
+                    <span>Scanner / Photo</span>
+                </button>
+                <button id="addRecipeBtn" class="btn primary-btn" title="Ajouter une recette manuellement">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Nouvelle Recette</span>
+                </button>
+                <button id="deviceSyncBtn" class="btn ghost-btn" title="Utiliser sur Smartphone et PC">
+                    <i class="fa-solid fa-mobile-screen-button"></i>
+                    <span>Smartphone & PC</span>
+                </button>
+                <button id="installPwaBtn" class="btn install-btn hidden" title="Installer l'application sur cet appareil">
+                    <i class="fa-solid fa-download"></i>
+                    <span>Installer l'App</span>
+                </button>
+            </div>
+
+            <!-- Search & Filters -->
             <div class="search-filter-bar">
-                <input type="text" id="searchInput" placeholder="Rechercher une recette, un mot-clé...">
-                <select id="typeFilter">
-                    <option value="all">Tous les types</option>
-                    <option value="entree">Entrée</option>
-                    <option value="plat">Plat principal</option>
-                    <option value="dessert">Dessert</option>
-                    <option value="boisson">Boisson</option>
-                </select>
-                <button id="addRecipeBtn" class="btn primary-btn"><i class="fa-solid fa-plus"></i> Nouvelle Recette</button>
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="searchInput" placeholder="Rechercher une recette, un ingrédient (ex: chocolat, cannelle, pommes)...">
+                    <button id="clearSearchBtn" class="clear-search hidden" title="Effacer la recherche">&times;</button>
+                </div>
+
+                <div class="filters-row">
+                    <select id="typeFilter" aria-label="Filtrer par type de plat">
+                        <option value="all">🍽️ Tous les types</option>
+                        <option value="entree">🥗 Entrée</option>
+                        <option value="plat">🍲 Plat principal</option>
+                        <option value="dessert">🍰 Dessert</option>
+                        <option value="boisson">🍹 Boisson</option>
+                    </select>
+
+                    <button id="filterScanOnlyBtn" class="filter-chip" title="Afficher uniquement les scans et recettes manuscrites">
+                        <i class="fa-solid fa-file-pen"></i> Scans manuscrits
+                    </button>
+                </div>
             </div>
         </header>
 
+        <!-- Stats / Recipe count badge -->
+        <div class="status-bar">
+            <span id="recipesCount"><i class="fa-solid fa-book"></i> Chargement...</span>
+            <span class="sync-indicator" title="Synchronisation active via le cloud Supabase">
+                <i class="fa-solid fa-cloud-check"></i> Synchronisé Smartphone & PC
+            </span>
+        </div>
+
+        <!-- Recipes Grid -->
         <main id="recipesGrid" class="recipes-grid">
-            <!-- Recipes will be injected here by JS -->
+            <!-- Injected via app.js -->
         </main>
     </div>
 
-    <!-- Modal for VIEWING a recipe -->
-    <div id="viewRecipeModal" class="modal hidden">
-        <div class="modal-content glass-panel" style="max-width: 800px;">
+    <!-- Mobile Bottom Navigation (Visible on Smartphone) -->
+    <nav class="mobile-bottom-nav">
+        <button id="mobHomeBtn" class="mob-nav-item active" title="Accueil">
+            <i class="fa-solid fa-utensils"></i>
+            <span>Recettes</span>
+        </button>
+        <button id="mobScanBtn" class="mob-nav-item highlight" title="Scanner ou Photographier une recette">
+            <i class="fa-solid fa-camera"></i>
+            <span>Scanner</span>
+        </button>
+        <button id="mobAddBtn" class="mob-nav-item" title="Ajouter une recette">
+            <i class="fa-solid fa-plus-circle"></i>
+            <span>Ajouter</span>
+        </button>
+        <button id="mobDeviceBtn" class="mob-nav-item" title="Utiliser sur Smartphone & PC">
+            <i class="fa-solid fa-qrcode"></i>
+            <span>Partage</span>
+        </button>
+    </nav>
+
+    <!-- ============================================== -->
+    <!-- MODAL 1 : STUDIO PHOTO & SCANNER DE RECETTE    -->
+    <!-- ============================================== -->
+    <div id="scannerModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="scannerModalTitle">
+        <div class="modal-content glass-panel scanner-modal-content">
+            <span class="close-btn scanner-close-btn">&times;</span>
+            <h2 id="scannerModalTitle"><i class="fa-solid fa-camera-retro"></i> Scanner ou Photographier une Recette</h2>
+            <p class="modal-desc">Prenez en photo une recette (manuscrite ou imprimée). Vous pourrez soit <strong>rédiger automatiquement le texte</strong>, soit <strong>conserver le rendu scan authentique</strong>.</p>
+
+            <!-- Étape 1 : Sélection / Capture -->
+            <div id="scanUploadZone" class="scan-upload-zone">
+                <div class="upload-actions-grid">
+                    <label for="cameraDirectInput" class="upload-btn primary-upload-btn">
+                        <i class="fa-solid fa-camera"></i>
+                        <span>Prendre une photo</span>
+                        <small>Appareil photo smartphone ou webcam</small>
+                    </label>
+                    <input type="file" id="cameraDirectInput" accept="image/*" capture="environment" class="hidden-input">
+
+                    <label for="galleryFileInput" class="upload-btn secondary-upload-btn">
+                        <i class="fa-solid fa-images"></i>
+                        <span>Choisir une image</span>
+                        <small>Depuis la galerie ou l'ordinateur</small>
+                    </label>
+                    <input type="file" id="galleryFileInput" accept="image/*" class="hidden-input">
+                </div>
+                <p class="paste-tip"><i class="fa-regular fa-clipboard"></i> Astuce PC : Vous pouvez aussi directement faire <strong>Ctrl+V</strong> pour coller une image copiée.</p>
+            </div>
+
+            <!-- Étape 2 : Atelier de Retouche & Rendu (affiché après sélection) -->
+            <div id="scanEditorArea" class="scan-editor-area hidden">
+                <div class="scanner-preview-container">
+                    <canvas id="scannerCanvas"></canvas>
+                </div>
+
+                <!-- Outils de retouche et filtres de scan -->
+                <div class="editor-controls">
+                    <div class="control-section">
+                        <span class="control-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Mode de rendu :</span>
+                        <div class="filter-pill-group">
+                            <button type="button" class="filter-pill active" data-filter="scan-doc" title="Nettoie le papier et rehausse l'encre manuscrite">
+                                <i class="fa-solid fa-file-lines"></i> Scan Nettoyé (Recommandé)
+                            </button>
+                            <button type="button" class="filter-pill" data-filter="original" title="Photo brute">
+                                <i class="fa-solid fa-image"></i> Original
+                            </button>
+                            <button type="button" class="filter-pill" data-filter="scan-bw" title="Noir et blanc très contrasté">
+                                <i class="fa-solid fa-newspaper"></i> Scan N&B
+                            </button>
+                            <button type="button" class="filter-pill" data-filter="vintage" title="Ton chaud carnet de famille">
+                                <i class="fa-solid fa-scroll"></i> Papier Vintage
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="control-section-row">
+                        <div class="rotate-group">
+                            <span class="control-label">Orientation :</span>
+                            <button type="button" id="rotateLeftBtn" class="icon-control-btn" title="Pivoter de 90° à gauche">
+                                <i class="fa-solid fa-rotate-left"></i> 90°
+                            </button>
+                            <button type="button" id="rotateRightBtn" class="icon-control-btn" title="Pivoter de 90° à droite">
+                                <i class="fa-solid fa-rotate-right"></i> 90°
+                            </button>
+                        </div>
+
+                        <div class="sliders-group">
+                            <label for="contrastRange">Contraste : <span id="contrastVal">15</span></label>
+                            <input type="range" id="contrastRange" min="-40" max="60" value="15">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Les 2 Choix Principaux de l'Utilisateur -->
+                <div class="scan-decision-box">
+                    <div class="decision-card" id="chooseOcrBtn">
+                        <div class="decision-icon"><i class="fa-solid fa-pen-nib"></i></div>
+                        <div class="decision-body">
+                            <h3>1. Rédiger automatiquement la recette</h3>
+                            <p>L'intelligence artificielle lit la photo et transcrit les <strong>ingrédients et instructions</strong> sous forme de texte modifiable.</p>
+                        </div>
+                        <button class="btn decision-action-btn primary-btn">
+                            <i class="fa-solid fa-magic"></i> Rédiger via IA
+                        </button>
+                    </div>
+
+                    <div class="decision-card" id="chooseScanDocBtn">
+                        <div class="decision-icon"><i class="fa-solid fa-signature"></i></div>
+                        <div class="decision-body">
+                            <h3>2. Garder comme Scan Manuscrit</h3>
+                            <p>Conserve le charme authentique de l'écriture manuscrite avec le <strong>rendu document propre</strong> et zoom haute définition.</p>
+                        </div>
+                        <button class="btn decision-action-btn secondary-btn">
+                            <i class="fa-solid fa-file-signature"></i> Conserver le Scan
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Barre de progression OCR (visible lors de l'analyse) -->
+                <div id="ocrProgressContainer" class="ocr-progress-container hidden">
+                    <div class="ocr-status-text">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <span id="ocrStatusMsg">Initialisation de la reconnaissance de texte...</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div id="ocrProgressBar" class="progress-bar-fill" style="width: 10%;"></div>
+                    </div>
+                    <small style="color: var(--text-muted); display: block; margin-top: 0.5rem; text-align: center;">
+                        L'analyse s'effectue directement sur votre appareil (sans envoyer vos photos à un serveur tiers).
+                    </small>
+                </div>
+
+                <div class="editor-bottom-actions">
+                    <button type="button" id="retakePhotoBtn" class="btn text-btn">
+                        <i class="fa-solid fa-arrow-rotate-left"></i> Reprendre une autre photo
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- MODAL 2 : VISUALISATION COMPLÈTE DE RECETTE    -->
+    <!-- ============================================== -->
+    <div id="viewRecipeModal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modal-content glass-panel view-recipe-modal-content">
             <span class="close-btn view-close-btn">&times;</span>
             
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                <h2 id="viewModalTitle" style="margin-bottom: 0; padding-right: 2rem;">Titre de la recette</h2>
-                <span id="viewModalType" class="recipe-type" style="position: static; font-size: 0.9rem;">Type</span>
+            <div class="view-header">
+                <div>
+                    <span id="viewModalType" class="recipe-type-badge">Type</span>
+                    <span id="viewModalScanBadge" class="recipe-scan-badge hidden"><i class="fa-solid fa-signature"></i> Scan Manuscrit</span>
+                    <h2 id="viewModalTitle">Titre de la recette</h2>
+                </div>
+                <div class="view-header-actions">
+                    <button id="viewPrintBtn" class="btn icon-btn" title="Imprimer cette recette">
+                        <i class="fa-solid fa-print"></i>
+                    </button>
+                    <button id="viewEditBtn" class="btn icon-btn" title="Modifier cette recette">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                </div>
             </div>
             
-            <div id="viewModalKeywords" class="recipe-keywords" style="margin-bottom: 1.5rem;"></div>
+            <div id="viewModalKeywords" class="recipe-keywords"></div>
 
-            <!-- Content Area -->
-            <div id="viewModalContentArea">
+            <!-- Content Area (Image / Scan / Texte / URL) -->
+            <div id="viewModalContentArea" class="view-content-area">
                 <!-- Injected via JS -->
             </div>
         </div>
     </div>
 
-    <!-- Modal for adding/editing a recipe -->
-    <div id="recipeModal" class="modal hidden">
-        <div class="modal-content glass-panel">
-            <span class="close-btn">&times;</span>
+    <!-- ============================================== -->
+    <!-- MODAL 3 : AJOUTER / MODIFIER UNE RECETTE       -->
+    <!-- ============================================== -->
+    <div id="recipeModal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modal-content glass-panel form-modal-content">
+            <span class="close-btn form-close-btn">&times;</span>
             <h2 id="modalTitle">Ajouter une recette</h2>
             
             <form id="recipeForm">
-                <div class="form-group">
-                    <label for="recipeTitle">Titre de la recette</label>
-                    <input type="text" id="recipeTitle" required placeholder="Ex: Tarte aux pommes">
+                <div class="form-row">
+                    <div class="form-group flex-2">
+                        <label for="recipeTitle">Titre de la recette *</label>
+                        <input type="text" id="recipeTitle" required placeholder="Ex: Tarte aux pommes de Grand-Mère">
+                    </div>
+                    
+                    <div class="form-group flex-1">
+                        <label for="recipeType">Catégorie *</label>
+                        <select id="recipeType" required>
+                            <option value="entree">🥗 Entrée</option>
+                            <option value="plat" selected>🍲 Plat principal</option>
+                            <option value="dessert">🍰 Dessert</option>
+                            <option value="boisson">🍹 Boisson</option>
+                        </select>
+                    </div>
                 </div>
                 
                 <div class="form-group">
-                    <label for="recipeType">Type</label>
-                    <select id="recipeType" required>
-                        <option value="entree">Entrée</option>
-                        <option value="plat">Plat principal</option>
-                        <option value="dessert">Dessert</option>
-                        <option value="boisson">Boisson</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="recipeKeywords">Mots-clés (séparés par des virgules)</label>
-                    <input type="text" id="recipeKeywords" placeholder="Ex: végétarien, rapide, été">
+                    <label for="recipeKeywords">Mots-clés (séparés par des virgules pour faciliter la recherche)</label>
+                    <input type="text" id="recipeKeywords" placeholder="Ex: chocolat, four, facile, carnet familial">
                 </div>
 
+                <!-- Onglets du contenu -->
                 <div class="form-tabs">
-                    <button type="button" class="tab-btn active" data-tab="text-tab">Texte</button>
-                    <button type="button" class="tab-btn" data-tab="url-tab">Lien URL</button>
-                    <button type="button" class="tab-btn" data-tab="image-tab">Photo / Livre</button>
+                    <button type="button" class="tab-btn active" data-tab="text-tab">
+                        <i class="fa-solid fa-align-left"></i> Ingrédients & Préparation
+                    </button>
+                    <button type="button" class="tab-btn" data-tab="image-tab">
+                        <i class="fa-solid fa-camera"></i> Photo / Scan
+                    </button>
+                    <button type="button" class="tab-btn" data-tab="url-tab">
+                        <i class="fa-solid fa-link"></i> Lien URL
+                    </button>
                 </div>
 
+                <!-- Onglet 1 : Texte rédigé -->
                 <div class="tab-content active" id="text-tab">
-                    <label for="recipeContent">Ingrédients et instructions</label>
-                    <textarea id="recipeContent" rows="6" placeholder="Saisissez la recette ici..."></textarea>
+                    <div class="textarea-header">
+                        <label for="recipeContent">Ingrédients et instructions détaillées :</label>
+                        <button type="button" id="formScanToTextBtn" class="mini-btn" title="Prendre une photo pour transcrire automatiquement le texte">
+                            <i class="fa-solid fa-camera"></i> Transcrire depuis photo
+                        </button>
+                    </div>
+                    <textarea id="recipeContent" rows="8" placeholder="INGRÉDIENTS :
+- 250g de farine
+- 3 pommes
+...
+
+PRÉPARATION :
+1. Préchauffer le four à 180°C..."></textarea>
                 </div>
 
-                <div class="tab-content" id="url-tab">
-                    <label for="recipeUrl">Lien vers la recette</label>
-                    <input type="url" id="recipeUrl" placeholder="https://...">
-                    <small style="color: var(--text-muted); margin-top: 0.25rem;">Vous pourrez cliquer sur ce lien pour voir la recette originale.</small>
-                </div>
-
+                <!-- Onglet 2 : Photo / Scan -->
                 <div class="tab-content" id="image-tab">
-                    <label for="recipeImage">Importer une photo du livre de recettes</label>
-                    <input type="file" id="recipeImage" accept="image/*">
+                    <div class="image-tab-options">
+                        <button type="button" id="launchScannerFromFormBtn" class="btn scan-btn" style="width: 100%; justify-content: center;">
+                            <i class="fa-solid fa-camera"></i> Ouvrir le Studio Photo & Scanner
+                        </button>
+                        <div class="or-separator"><span>OU importer un fichier</span></div>
+                        <input type="file" id="recipeImage" accept="image/*">
+                    </div>
                     <div id="imagePreview" class="image-preview"></div>
                 </div>
 
-                <button type="submit" class="btn primary-btn submit-btn"><i class="fa-solid fa-save"></i> Enregistrer</button>
+                <!-- Onglet 3 : Lien web -->
+                <div class="tab-content" id="url-tab">
+                    <label for="recipeUrl">Lien vers la recette sur internet :</label>
+                    <input type="url" id="recipeUrl" placeholder="https://www.marmiton.org/recettes/...">
+                    <small style="color: var(--text-muted); margin-top: 0.25rem; display: block;">Vous pourrez cliquer sur ce lien pour consulter le site original.</small>
+                </div>
+
+                <button type="submit" class="btn primary-btn submit-btn">
+                    <i class="fa-solid fa-save"></i> <span>Enregistrer la recette</span>
+                </button>
             </form>
         </div>
     </div>
 
+    <!-- ============================================== -->
+    <!-- MODAL 4 : GUIDE SMARTPHONE & PC + QR CODE      -->
+    <!-- ============================================== -->
+    <div id="deviceModal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modal-content glass-panel device-modal-content">
+            <span class="close-btn device-close-btn">&times;</span>
+            <h2><i class="fa-solid fa-mobile-screen-button"></i> Utiliser sur Smartphone & PC</h2>
+            <p class="modal-desc">Votre livre de recettes est synchronisé en temps réel dans le cloud. Vos recettes et photos sont instantanément accessibles partout !</p>
+
+            <div class="sync-banner">
+                <div class="sync-banner-icon"><i class="fa-solid fa-arrows-rotate fa-spin-pulse"></i></div>
+                <div>
+                    <strong>Synchronisation instantanée</strong>
+                    <p>Prenez une photo de recette sur votre smartphone dans la cuisine, elle apparaît aussitôt sur votre ordinateur et vice versa !</p>
+                </div>
+            </div>
+
+            <!-- QR Code pour ouvrir sur Smartphone -->
+            <div class="qr-container">
+                <h3>Scanner avec l'appareil photo de votre smartphone :</h3>
+                <div id="qrcodeWrapper" class="qr-code-wrapper">
+                    <img id="qrCodeImg" alt="QR Code pour smartphone" src="" style="width: 180px; height: 180px; border-radius: 0.5rem; background: white; padding: 0.5rem;">
+                </div>
+                <p id="appUrlDisplay" class="url-copy-box"></p>
+                <button id="copyUrlBtn" class="btn ghost-btn mini-btn">
+                    <i class="fa-regular fa-copy"></i> Copier le lien
+                </button>
+            </div>
+
+            <!-- Instructions d'installation selon le système -->
+            <div class="install-guides">
+                <h3>Installer comme une vraie application :</h3>
+                
+                <div class="guide-cards">
+                    <div class="guide-card">
+                        <div class="guide-icon"><i class="fa-brands fa-apple"></i></div>
+                        <h4>iPhone & iPad (Safari)</h4>
+                        <ol>
+                            <li>Ouvrez le lien dans <strong>Safari</strong>.</li>
+                            <li>Touchez l'icône de partage <strong><i class="fa-solid fa-arrow-up-from-bracket"></i></strong> en bas.</li>
+                            <li>Sélectionnez <strong>« Sur l'écran d'accueil »</strong>.</li>
+                        </ol>
+                    </div>
+
+                    <div class="guide-card">
+                        <div class="guide-icon"><i class="fa-brands fa-android"></i></div>
+                        <h4>Android (Chrome)</h4>
+                        <ol>
+                            <li>Ouvrez le lien dans <strong>Chrome</strong>.</li>
+                            <li>Touchez le menu <strong>(3 petits points en haut à droite)</strong>.</li>
+                            <li>Touchez <strong>« Installer l'application »</strong> ou « Ajouter à l'écran d'accueil ».</li>
+                        </ol>
+                    </div>
+
+                    <div class="guide-card">
+                        <div class="guide-icon"><i class="fa-solid fa-laptop"></i></div>
+                        <h4>PC & Mac (Chrome / Edge)</h4>
+                        <ol>
+                            <li>Cliquez sur l'icône <strong>Installer l'application</strong> dans la barre d'adresse du navigateur.</li>
+                            <li>L'application s'ouvrira dans sa propre fenêtre comme un logiciel autonome.</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Scripts -->
+    <!-- Supabase JS CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=5"></script>
+    <!-- Tesseract.js CDN (Client-side OCR for French recipes) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- Main Application Logic -->
+    <script src="app.js?v=6"></script>
 </body>
 </html>
