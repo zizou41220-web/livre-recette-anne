@@ -375,18 +375,43 @@ PRÉPARATION :
             <!-- QR Code pour ouvrir sur Smartphone -->
             <div class="qr-container">
                 <h3>Scanner avec l'appareil photo de votre smartphone :</h3>
-                <div id="qrcodeWrapper" class="qr-code-wrapper">
-                    <img id="qrCodeImg" alt="QR Code pour smartphone" src="" style="width: 180px; height: 180px; border-radius: 0.5rem; background: white; padding: 0.5rem;">
+                
+                <div class="url-mode-selector" style="display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 1rem; flex-wrap: wrap;">
+                    <button type="button" id="useWifiIpBtn" class="btn filter-chip active" style="font-size: 0.85rem;">
+                        <i class="fa-solid fa-wifi"></i> Même Wi-Fi maison (192.168.1.15)
+                    </button>
+                    <button type="button" id="useOnlineUrlBtn" class="btn filter-chip" style="font-size: 0.85rem;">
+                        <i class="fa-solid fa-globe"></i> En ligne (Partout & 4G)
+                    </button>
                 </div>
-                <p id="appUrlDisplay" class="url-copy-box"></p>
-                <button id="copyUrlBtn" class="btn ghost-btn mini-btn">
-                    <i class="fa-regular fa-copy"></i> Copier le lien
-                </button>
+
+                <div id="qrcodeWrapper" class="qr-code-wrapper">
+                    <img id="qrCodeImg" alt="QR Code pour smartphone" src="" style="width: 200px; height: 200px; border-radius: 0.5rem; background: white; padding: 0.6rem; display: block; margin: 0 auto;">
+                </div>
+                
+                <div style="max-width: 460px; margin: 0.75rem auto 0;">
+                    <label for="customPhoneUrlInput" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Adresse ouverte par le QR code :</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="customPhoneUrlInput" style="flex: 1; font-size: 0.85rem; padding: 0.5rem 0.75rem;" placeholder="http://192.168.1.15:8080/">
+                        <button id="copyUrlBtn" class="btn ghost-btn mini-btn" title="Copier l'adresse">
+                            <i class="fa-regular fa-copy"></i> Copier
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Note d'aide anti-404 -->
+                <div style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.25); border-radius: var(--radius-sm); padding: 0.75rem 1rem; margin-top: 1rem; text-align: left; font-size: 0.82rem; line-height: 1.5;">
+                    <strong style="color: #fda4af;"><i class="fa-solid fa-circle-question"></i> Vous avez eu une erreur 404 lors du scan ?</strong>
+                    <ul style="padding-left: 1.25rem; margin-top: 0.35rem; color: var(--text-muted);">
+                        <li><strong>Sur le Wi-Fi de la maison :</strong> Sélectionnez le bouton <em>« Même Wi-Fi maison »</em> ci-dessus. Votre smartphone doit être connecté à la même box Wi-Fi que le PC.</li>
+                        <li><strong>Pour l'utiliser partout (en courses, chez des amis, PC éteint) :</strong> Déposez simplement le dossier du site en 30 secondes sur <strong><a href="https://app.netlify.com/drop" target="_blank" style="color: #f43f5e; text-decoration: underline;">Netlify Drop</a></strong> pour obtenir une adresse web HTTPS gratuite permanente !</li>
+                    </ul>
+                </div>
             </div>
 
             <!-- Instructions d'installation selon le système -->
             <div class="install-guides">
-                <h3>Installer comme une vraie application :</h3>
+                <h3>Installer comme une vraie application sur votre écran d'accueil :</h3>
                 
                 <div class="guide-cards">
                     <div class="guide-card">
@@ -394,8 +419,8 @@ PRÉPARATION :
                         <h4>iPhone & iPad (Safari)</h4>
                         <ol>
                             <li>Ouvrez le lien dans <strong>Safari</strong>.</li>
-                            <li>Touchez l'icône de partage <strong><i class="fa-solid fa-arrow-up-from-bracket"></i></strong> en bas.</li>
-                            <li>Sélectionnez <strong>« Sur l'écran d'accueil »</strong>.</li>
+                            <li>Touchez l'icône de partage <strong><i class="fa-solid fa-arrow-up-from-bracket"></i></strong>.</li>
+                            <li>Touchez <strong>« Sur l'écran d'accueil »</strong>.</li>
                         </ol>
                     </div>
 
@@ -404,8 +429,8 @@ PRÉPARATION :
                         <h4>Android (Chrome)</h4>
                         <ol>
                             <li>Ouvrez le lien dans <strong>Chrome</strong>.</li>
-                            <li>Touchez le menu <strong>(3 petits points en haut à droite)</strong>.</li>
-                            <li>Touchez <strong>« Installer l'application »</strong> ou « Ajouter à l'écran d'accueil ».</li>
+                            <li>Touchez le menu <strong>(3 petits points)</strong>.</li>
+                            <li>Touchez <strong>« Installer l'application »</strong>.</li>
                         </ol>
                     </div>
 

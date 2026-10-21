@@ -94,25 +94,59 @@ function setupDeviceSyncModal() {
     const deviceModal = document.getElementById('deviceModal');
     const closeBtn = document.querySelector('.device-close-btn');
     const qrImg = document.getElementById('qrCodeImg');
-    const urlDisplay = document.getElementById('appUrlDisplay');
+    const customUrlInput = document.getElementById('customPhoneUrlInput');
     const copyUrlBtn = document.getElementById('copyUrlBtn');
+    const useWifiIpBtn = document.getElementById('useWifiIpBtn');
+    const useOnlineUrlBtn = document.getElementById('useOnlineUrlBtn');
 
+    const LOCAL_WIFI_URL = 'http://192.168.1.15:8080/';
     const GITHUB_PAGES_URL = 'https://tessiers.github.io/livre-recette-anne/';
 
+    const updateQr = (url) => {
+        if (!url) return;
+        if (customUrlInput) customUrlInput.value = url;
+        if (qrImg) qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}`;
+        localStorage.setItem('anne_phone_url', url);
+    };
+
     const openDeviceModal = () => {
-        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        // Sur smartphone, si on est en local sur le PC, ouvrir la version en ligne GitHub Pages
-        const targetUrl = isLocal ? GITHUB_PAGES_URL : window.location.href;
-        
-        urlDisplay.innerHTML = `<strong>Lien pour smartphone :</strong> <br><a href="${targetUrl}" target="_blank" style="color: #fda4af;">${targetUrl}</a>`;
-        
-        // Génération dynamique du QR code
-        qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(targetUrl)}`;
+        const savedUrl = localStorage.getItem('anne_phone_url');
+        const defaultUrl = savedUrl || LOCAL_WIFI_URL;
+        updateQr(defaultUrl);
+
+        if (useWifiIpBtn && useOnlineUrlBtn) {
+            useWifiIpBtn.classList.toggle('active', defaultUrl.includes('192.168'));
+            useOnlineUrlBtn.classList.toggle('active', !defaultUrl.includes('192.168'));
+        }
+
         deviceModal.classList.remove('hidden');
     };
 
     if (deviceBtn) deviceBtn.addEventListener('click', openDeviceModal);
     if (mobDeviceBtn) mobDeviceBtn.addEventListener('click', openDeviceModal);
+
+    if (useWifiIpBtn) {
+        useWifiIpBtn.addEventListener('click', () => {
+            useWifiIpBtn.classList.add('active');
+            useOnlineUrlBtn.classList.remove('active');
+            updateQr(LOCAL_WIFI_URL);
+        });
+    }
+
+    if (useOnlineUrlBtn) {
+        useOnlineUrlBtn.addEventListener('click', () => {
+            useOnlineUrlBtn.classList.add('active');
+            useWifiIpBtn.classList.remove('active');
+            updateQr(GITHUB_PAGES_URL);
+        });
+    }
+
+    if (customUrlInput) {
+        customUrlInput.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
+            if (val) updateQr(val);
+        });
+    }
 
     if (closeBtn) {
         closeBtn.addEventListener('click', () => deviceModal.classList.add('hidden'));
@@ -120,8 +154,7 @@ function setupDeviceSyncModal() {
 
     if (copyUrlBtn) {
         copyUrlBtn.addEventListener('click', () => {
-            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const urlToCopy = isLocal ? GITHUB_PAGES_URL : window.location.href;
+            const urlToCopy = customUrlInput ? customUrlInput.value : window.location.href;
             navigator.clipboard.writeText(urlToCopy).then(() => {
                 showToast("Lien copié dans le presse-papier !", "success");
             }).catch(() => {
@@ -509,11 +542,12 @@ async function runOcrAndFillRecipe() {
         ocrCtx.drawImage(canvas, 0, 0);
         applyScanFilter(ocrCtx, ocrCanvas.width, ocrCanvas.height, 'scan-bw', 25);
 
-        // Appel Tesseract avec logger de progression
+        // Appel Tesseract avec logger de progression et CDN francais garanti
         const result = await Tesseract.recognize(
             ocrCanvas,
             'fra',
             {
+                langPath: 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0',
                 logger: m => {
                     if (m.status === 'recognizing text') {
                         const pct = Math.round(m.progress * 100);

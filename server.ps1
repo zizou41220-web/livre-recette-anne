@@ -2,7 +2,7 @@ $port = 8080
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:$port/")
 $listener.Start()
-Write-Host "Server running at http://localhost:$port/"
+Write-Host "Serveur local demarre sur http://localhost:$port/"
 
 $mimeTypes = @{
     ".html" = "text/html; charset=utf-8"
@@ -53,7 +53,7 @@ try {
             }
             $response.Close()
         } catch {
-            Write-Host "Error processing request: $_"
+            # Ignore individual client disconnects
         }
     }
 } finally {
