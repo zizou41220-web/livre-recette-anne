@@ -100,7 +100,7 @@ function setupDeviceSyncModal() {
     const useOnlineUrlBtn = document.getElementById('useOnlineUrlBtn');
 
     const LOCAL_WIFI_URL = 'http://192.168.1.15:8080/';
-    const GITHUB_PAGES_URL = 'https://tessiers.github.io/livre-recette-anne/';
+    const GITHUB_PAGES_URL = 'https://zizou41220-web.github.io/livre-recette-anne/';
 
     const updateQr = (url) => {
         if (!url) return;
