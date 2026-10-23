@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="icon-192.png">
 
     <!-- Styles & Fonts -->
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=7">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
@@ -46,6 +46,10 @@
                 <button id="addRecipeBtn" class="btn primary-btn" title="Ajouter une recette manuellement">
                     <i class="fa-solid fa-plus"></i>
                     <span>Nouvelle Recette</span>
+                </button>
+                <button id="openAiSettingsBtn" class="btn ghost-btn" title="Configurer l'IA Google Gemini (lecture manuscrite)">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span id="headerAiBadge">IA Gemini</span>
                 </button>
                 <button id="deviceSyncBtn" class="btn ghost-btn" title="Utiliser sur Smartphone et PC">
                     <i class="fa-solid fa-mobile-screen-button"></i>
@@ -207,13 +211,17 @@
                 <!-- Les 2 Choix Principaux de l'Utilisateur -->
                 <div class="scan-decision-box">
                     <div class="decision-card" id="chooseOcrBtn">
-                        <div class="decision-icon"><i class="fa-solid fa-pen-nib"></i></div>
+                        <div class="decision-icon"><i class="fa-solid fa-wand-magic-sparkles" style="color: #fda4af;"></i></div>
                         <div class="decision-body">
-                            <h3>1. Rédiger automatiquement la recette</h3>
-                            <p>L'intelligence artificielle lit la photo et transcrit les <strong>ingrédients et instructions</strong> sous forme de texte modifiable.</p>
+                            <h3>1. Rédiger via IA Google Gemini</h3>
+                            <p>L'intelligence artificielle déchiffre l'<strong>écriture manuscrite</strong> (même difficile) et extrait fidèlement le titre, les ingrédients et les instructions.</p>
+                            <div class="ai-key-status-row">
+                                <span id="scannerAiKeyPill" class="badge-pill ai-missing"><i class="fa-solid fa-circle-exclamation"></i> Clé Gemini requise</span>
+                                <button type="button" id="scannerConfigureAiBtn" class="link-btn"><i class="fa-solid fa-gear"></i> Configurer la clé gratuite</button>
+                            </div>
                         </div>
                         <button class="btn decision-action-btn primary-btn">
-                            <i class="fa-solid fa-magic"></i> Rédiger via IA
+                            <i class="fa-solid fa-magic"></i> Rédiger via IA Gemini
                         </button>
                     </div>
 
@@ -229,17 +237,23 @@
                     </div>
                 </div>
 
-                <!-- Barre de progression OCR (visible lors de l'analyse) -->
+                <div style="text-align: center; margin-top: 0.75rem;">
+                    <button type="button" id="useLocalTesseractBtn" class="link-btn-subtle" title="Moteur OCR classique local sans clé API (pour texte imprimé uniquement)">
+                        <i class="fa-solid fa-font"></i> Ou essayer l'ancien OCR local Tesseract (déconseillé pour le manuscrit)
+                    </button>
+                </div>
+
+                <!-- Barre de progression IA / OCR (visible lors de l'analyse) -->
                 <div id="ocrProgressContainer" class="ocr-progress-container hidden">
                     <div class="ocr-status-text">
                         <i class="fa-solid fa-spinner fa-spin"></i>
-                        <span id="ocrStatusMsg">Initialisation de la reconnaissance de texte...</span>
+                        <span id="ocrStatusMsg">Traitement en cours...</span>
                     </div>
                     <div class="progress-bar-bg">
                         <div id="ocrProgressBar" class="progress-bar-fill" style="width: 10%;"></div>
                     </div>
-                    <small style="color: var(--text-muted); display: block; margin-top: 0.5rem; text-align: center;">
-                        L'analyse s'effectue directement sur votre appareil (sans envoyer vos photos à un serveur tiers).
+                    <small id="ocrEngineNote" style="color: var(--text-muted); display: block; margin-top: 0.5rem; text-align: center;">
+                        Lecture et analyse culinaire via l'IA de vision Google Gemini...
                     </small>
                 </div>
 
@@ -474,15 +488,70 @@ PRÉPARATION :
         </div>
     </div>
 
+    <!-- ============================================== -->
+    <!-- MODAL 5 : CONFIGURATION IA GOOGLE GEMINI       -->
+    <!-- ============================================== -->
+    <div id="aiSettingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="aiModalTitle">
+        <div class="modal-content glass-panel ai-modal-content">
+            <span class="close-btn ai-close-btn">&times;</span>
+            <h2 id="aiModalTitle"><i class="fa-solid fa-wand-magic-sparkles" style="color: #fda4af;"></i> Intelligence Artificielle Google Gemini</h2>
+            <p class="modal-desc">Pour déchiffrer avec une précision chirurgicale les recettes manuscrites de famille (cursive, stylos bille, papier jauni), l'application utilise les modèles de vision <strong>Google Gemini 2.0 & 1.5 Flash</strong>.</p>
+
+            <div class="ai-guide-box">
+                <div class="ai-guide-step">
+                    <span class="step-num">1</span>
+                    <div>
+                        <strong>Obtenez votre clé API gratuite en quelques clics :</strong>
+                        <p>Google AI Studio fournit un accès gratuit à Gemini pour votre usage personnel.</p>
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="btn primary-btn mini-btn" style="margin-top: 0.6rem; display: inline-flex; text-decoration: none;">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> Obtenir ma clé gratuite Google AI Studio
+                        </a>
+                    </div>
+                </div>
+
+                <div class="ai-guide-step">
+                    <span class="step-num">2</span>
+                    <div style="width: 100%;">
+                        <label for="geminiApiKeyInput"><strong>Collez votre clé API Gemini ci-dessous :</strong></label>
+                        <div class="input-with-actions" style="display: flex; gap: 0.5rem; margin-top: 0.4rem;">
+                            <input type="password" id="geminiApiKeyInput" placeholder="AIzaSy..." style="flex: 1; font-family: monospace; font-size: 0.9rem;">
+                            <button type="button" id="toggleApiKeyVisibility" class="btn icon-btn" title="Afficher/Masquer la clé">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+                        <small style="color: var(--text-muted); display: block; margin-top: 0.4rem;">
+                            <i class="fa-solid fa-shield-halved"></i> 100% privé : votre clé reste strictement stockée dans votre navigateur sur cet appareil.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- État / Test de la clé -->
+            <div id="aiTestResult" class="ai-test-result hidden"></div>
+
+            <div class="ai-modal-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; flex-wrap: wrap;">
+                <button type="button" id="testAiKeyBtn" class="btn ghost-btn">
+                    <i class="fa-solid fa-vial-circle-check"></i> Tester la clé
+                </button>
+                <button type="button" id="deleteAiKeyBtn" class="btn ghost-btn hidden" style="color: #f43f5e; border-color: rgba(244,63,94,0.3);">
+                    <i class="fa-solid fa-trash"></i> Retirer la clé
+                </button>
+                <button type="button" id="saveAiKeyBtn" class="btn primary-btn">
+                    <i class="fa-solid fa-floppy-disk"></i> Enregistrer la clé
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notifications -->
     <div id="toastContainer" class="toast-container"></div>
 
     <!-- Scripts -->
     <!-- Supabase JS CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- Tesseract.js CDN (Client-side OCR for French recipes) -->
+    <!-- Tesseract.js CDN (Fallback client-side OCR for French recipes) -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <!-- Main Application Logic -->
-    <script src="app.js?v=6"></script>
+    <script src="app.js?v=7"></script>
 </body>
 </html>

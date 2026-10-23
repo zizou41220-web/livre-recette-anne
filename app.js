@@ -52,8 +52,10 @@ function initApp() {
     setupRecipeForm();
     setupSearchAndFilters();
     setupDeviceSyncModal();
+    setupAiSettings();
     setupPasteSupport();
 
+    updateAiKeyStatusUI();
     loadRecipes();
 }
 
@@ -203,10 +205,16 @@ function setupNavigationAndModals() {
     const viewModal = document.getElementById('viewRecipeModal');
     const scannerModal = document.getElementById('scannerModal');
     const deviceModal = document.getElementById('deviceModal');
+    const aiModal = document.getElementById('aiSettingsModal');
 
     const formCloseBtn = document.querySelector('.form-close-btn');
     const viewCloseBtn = document.querySelector('.view-close-btn');
     const scannerCloseBtn = document.querySelector('.scanner-close-btn');
+    const aiCloseBtn = document.querySelector('.ai-close-btn');
+    const openAiBtn = document.getElementById('openAiSettingsBtn');
+
+    if (openAiBtn) openAiBtn.addEventListener('click', openAiSettingsModal);
+    if (aiCloseBtn) aiCloseBtn.addEventListener('click', closeAiSettingsModal);
 
     // Ouverture formulaire ajout
     const openNewRecipe = () => {
@@ -219,6 +227,7 @@ function setupNavigationAndModals() {
     // Ouverture scanner
     const openScanner = () => {
         resetScannerStudio();
+        updateAiKeyStatusUI();
         scannerModal.classList.remove('hidden');
     };
     if (openScannerBtn) openScannerBtn.addEventListener('click', openScanner);
@@ -247,6 +256,7 @@ function setupNavigationAndModals() {
         if (e.target === viewModal) viewModal.classList.add('hidden');
         if (e.target === scannerModal) scannerModal.classList.add('hidden');
         if (e.target === deviceModal) deviceModal.classList.add('hidden');
+        if (e.target === aiModal) closeAiSettingsModal();
     });
 
     window.addEventListener('keydown', (e) => {
@@ -255,6 +265,7 @@ function setupNavigationAndModals() {
             viewModal.classList.add('hidden');
             scannerModal.classList.add('hidden');
             deviceModal.classList.add('hidden');
+            closeAiSettingsModal();
         }
     });
 }
@@ -410,10 +421,25 @@ function setupScannerStudio() {
         });
     }
 
-    // Option 1 : Rédiger automatiquement via OCR (multi-pages)
+    // Option 1 : Rédiger automatiquement via IA Google Gemini (multi-pages)
     if (chooseOcrBtn) {
         chooseOcrBtn.addEventListener('click', async () => {
-            await runOcrAndFillRecipe();
+            await runGeminiVisionOcr();
+        });
+    }
+
+    const useLocalTesseractBtn = document.getElementById('useLocalTesseractBtn');
+    if (useLocalTesseractBtn) {
+        useLocalTesseractBtn.addEventListener('click', async () => {
+            await runLocalTesseractOcr();
+        });
+    }
+
+    const scannerConfigureAiBtn = document.getElementById('scannerConfigureAiBtn');
+    if (scannerConfigureAiBtn) {
+        scannerConfigureAiBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openAiSettingsModal();
         });
     }
 
@@ -652,15 +678,381 @@ function applyScanFilter(ctx, width, height, mode, contrastVal) {
 }
 
 /* ============================================================ */
-/* 4. OPTION 1 : OCR MULTI-PAGES ET RÉDACTION AUTOMATIQUE       */
+/* 4. OPTION 1 : DÉCHIFFREMENT IA GOOGLE GEMINI VISION          */
 /* ============================================================ */
-async function runOcrAndFillRecipe() {
+
+function getGeminiApiKey() {
+    return (localStorage.getItem('anne_gemini_api_key') || '').trim();
+}
+
+function setGeminiApiKey(key) {
+    if (key) {
+        localStorage.setItem('anne_gemini_api_key', key.trim());
+    } else {
+        localStorage.removeItem('anne_gemini_api_key');
+    }
+    updateAiKeyStatusUI();
+}
+
+function updateAiKeyStatusUI() {
+    const key = getGeminiApiKey();
+    const hasKey = Boolean(key);
+
+    // Badge dans l'en-tête
+    const headerBtn = document.getElementById('openAiSettingsBtn');
+    const headerBadge = document.getElementById('headerAiBadge');
+    if (headerBtn) {
+        headerBtn.classList.toggle('header-ai-active', hasKey);
+        headerBtn.title = hasKey ? "IA Gemini active : prête pour transcrire les recettes manuscrites" : "Configurer l'IA Google Gemini (lecture manuscrite)";
+    }
+    if (headerBadge) {
+        headerBadge.innerHTML = hasKey ? '<i class="fa-solid fa-circle-check" style="color:#6ee7b7;"></i> IA Prête' : 'IA Gemini';
+    }
+
+    // Pilule dans le scanner
+    const pill = document.getElementById('scannerAiKeyPill');
+    const configBtn = document.getElementById('scannerConfigureAiBtn');
+    if (pill) {
+        if (hasKey) {
+            pill.className = 'badge-pill ai-active';
+            pill.innerHTML = '<i class="fa-solid fa-circle-check"></i> IA Gemini Prête';
+        } else {
+            pill.className = 'badge-pill ai-missing';
+            pill.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Clé Gemini requise';
+        }
+    }
+    if (configBtn) {
+        configBtn.textContent = hasKey ? "Modifier la clé" : "Configurer la clé gratuite";
+    }
+
+    // Bouton de suppression dans la modale
+    const deleteBtn = document.getElementById('deleteAiKeyBtn');
+    if (deleteBtn) {
+        deleteBtn.classList.toggle('hidden', !hasKey);
+    }
+}
+
+function openAiSettingsModal() {
+    const modal = document.getElementById('aiSettingsModal');
+    const input = document.getElementById('geminiApiKeyInput');
+    const testResult = document.getElementById('aiTestResult');
+
+    if (!modal) return;
+    if (input) input.value = getGeminiApiKey();
+    if (testResult) {
+        testResult.className = 'ai-test-result hidden';
+        testResult.textContent = '';
+    }
+    modal.classList.remove('hidden');
+}
+
+function closeAiSettingsModal() {
+    const modal = document.getElementById('aiSettingsModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function setupAiSettings() {
+    const input = document.getElementById('geminiApiKeyInput');
+    const toggleBtn = document.getElementById('toggleApiKeyVisibility');
+    const saveBtn = document.getElementById('saveAiKeyBtn');
+    const deleteBtn = document.getElementById('deleteAiKeyBtn');
+    const testBtn = document.getElementById('testAiKeyBtn');
+    const testResult = document.getElementById('aiTestResult');
+
+    if (toggleBtn && input) {
+        toggleBtn.addEventListener('click', () => {
+            const isPassword = input.type === 'password';
+            input.type = isPassword ? 'text' : 'password';
+            toggleBtn.innerHTML = isPassword ? '<i class="fa-solid fa-eye-slash"></i>' : '<i class="fa-solid fa-eye"></i>';
+        });
+    }
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            const key = input ? input.value.trim() : '';
+            if (!key) {
+                showToast("Veuillez saisir votre clé API Gemini.", "error");
+                return;
+            }
+            setGeminiApiKey(key);
+            showToast("Clé IA Gemini enregistrée avec succès !", "success");
+            closeAiSettingsModal();
+
+            // Si le scanner est ouvert avec des pages en attente, lancer la transcription
+            if (scannedPages.length > 0 && !document.getElementById('scannerModal').classList.contains('hidden')) {
+                runGeminiVisionOcr();
+            }
+        });
+    }
+
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+            if (confirm("Supprimer la clé API Gemini de cet appareil ?")) {
+                setGeminiApiKey('');
+                if (input) input.value = '';
+                showToast("Clé Gemini supprimée.", "info");
+                closeAiSettingsModal();
+            }
+        });
+    }
+
+    if (testBtn) {
+        testBtn.addEventListener('click', async () => {
+            const key = input ? input.value.trim() : '';
+            if (!key) {
+                showToast("Veuillez d'abord saisir une clé pour la tester.", "error");
+                return;
+            }
+
+            testBtn.disabled = true;
+            testBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Test en cours...';
+            if (testResult) {
+                testResult.className = 'ai-test-result';
+                testResult.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Test de connexion aux serveurs Google Gemini...';
+                testResult.classList.remove('hidden');
+            }
+
+            try {
+                const res = await testGeminiApiKey(key);
+                if (testResult) {
+                    testResult.className = 'ai-test-result success';
+                    testResult.innerHTML = `<i class="fa-solid fa-circle-check"></i> <strong>Connexion réussie !</strong> Le modèle <em>${res.model}</em> répond parfaitement.`;
+                }
+                showToast("Clé Gemini valide !", "success");
+            } catch (err) {
+                if (testResult) {
+                    testResult.className = 'ai-test-result error';
+                    testResult.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <strong>Échec du test :</strong> ${err.message || 'Clé invalide'}`;
+                }
+                showToast("Échec du test de la clé.", "error");
+            } finally {
+                testBtn.disabled = false;
+                testBtn.innerHTML = '<i class="fa-solid fa-vial-circle-check"></i> Tester la clé';
+            }
+        });
+    }
+}
+
+async function testGeminiApiKey(apiKey) {
+    if (!apiKey) throw new Error("Clé manquante.");
+    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    let lastErr = null;
+
+    for (const model of models) {
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: "Bonjour, réponds simplement avec le mot 'FONCTIONNE'." }] }]
+                })
+            });
+
+            if (response.ok) {
+                return { success: true, model };
+            }
+
+            const errJson = await response.json().catch(() => ({}));
+            lastErr = new Error(errJson?.error?.message || `Erreur HTTP ${response.status}`);
+        } catch (err) {
+            lastErr = err;
+        }
+    }
+
+    throw lastErr || new Error("Impossible de joindre Google Gemini.");
+}
+
+/**
+ * Appel à l'IA Google Gemini Vision pour transcrire une ou plusieurs pages de recette
+ */
+async function callGeminiVision(apiKey, imagesBase64) {
+    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    let lastError = null;
+
+    const parts = [
+        {
+            text: `Tu es un chef cuisinier expert en déchiffrage de recettes manuscrites de famille, carnets de cuisine anciens et fiches culinaires en français.
+Analyse attentivement cette image (ou ces pages d'une même recette).
+Déchiffre fidèlement l'écriture manuscrite humaine (même cursive, inclinée, pattes de mouche ou abréviations culinaires).
+Si un mot ou une quantité est difficile à lire, déduis-le logiquement d'après le contexte culinaire (ex: farine, sucre, cuillères à soupe, pincée, grammes, etc.).
+Corrige les coquilles évidentes de retranscription pour que la recette soit immédiatement exploitable en cuisine.
+
+Tu DOIS répondre STRICTEMENT sous la forme d'un objet JSON valide (sans aucun bloc de texte markdown ni balise extérieure, uniquement le JSON brut) avec la structure exacte suivante :
+{
+  "title": "Nom précis de la recette",
+  "type": "entree" | "plat" | "dessert" | "boisson",
+  "keywords": ["mot-clé 1", "mot-clé 2"],
+  "ingredients": [
+    "250 g de farine",
+    "3 œufs",
+    "1 sachet de levure chimique"
+  ],
+  "instructions": [
+    "Préchauffer le four à 180°C.",
+    "Dans un saladier, fouetter les œufs avec le sucre..."
+  ]
+}`
+        }
+    ];
+
+    imagesBase64.forEach((b64) => {
+        parts.push({
+            inline_data: {
+                mime_type: "image/jpeg",
+                data: b64
+            }
+        });
+    });
+
+    for (const model of models) {
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts }],
+                    generationConfig: {
+                        temperature: 0.2,
+                        response_mime_type: "application/json"
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const errJson = await response.json().catch(() => ({}));
+                const msg = errJson?.error?.message || `HTTP ${response.status}`;
+                throw new Error(msg);
+            }
+
+            const data = await response.json();
+            const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!textResponse) throw new Error("Réponse vide de Gemini");
+
+            let cleanJsonStr = textResponse.trim();
+            if (cleanJsonStr.startsWith('```')) {
+                cleanJsonStr = cleanJsonStr.replace(/^```(json)?\n?/, '').replace(/\n?```$/, '').trim();
+            }
+
+            const parsed = JSON.parse(cleanJsonStr);
+            return parsed;
+        } catch (err) {
+            console.warn(`Échec Gemini avec le modèle ${model}:`, err);
+            lastError = err;
+        }
+    }
+
+    throw lastError || new Error("Impossible de communiquer avec Google Gemini.");
+}
+
+/**
+ * Rédiger automatiquement via l'IA Google Gemini Vision (Recommandé pour le manuscrit)
+ */
+async function runGeminiVisionOcr() {
+    const apiKey = getGeminiApiKey();
+
+    if (!apiKey) {
+        showToast("Veuillez renseigner votre clé gratuite Google Gemini pour transcrire le manuscrit.", "info");
+        openAiSettingsModal();
+        return;
+    }
+
+    if (scannedPages.length === 0) {
+        showToast("Aucune page à numériser.", "error");
+        return;
+    }
+
     const progressContainer = document.getElementById('ocrProgressContainer');
     const progressBar = document.getElementById('ocrProgressBar');
     const statusMsg = document.getElementById('ocrStatusMsg');
+    const noteElem = document.getElementById('ocrEngineNote');
+
+    progressContainer.classList.remove('hidden');
+    progressBar.style.width = '20%';
+    statusMsg.textContent = "Préparation des scans pour l'IA Gemini...";
+    if (noteElem) noteElem.textContent = "Lecture et déchiffrement culinaire via l'IA Google Gemini Vision...";
+
+    try {
+        let base64Images = [];
+        pendingImageBlobs = [];
+
+        for (let i = 0; i < scannedPages.length; i++) {
+            const page = scannedPages[i];
+            const canvas = createProcessedCanvasForPage(page);
+
+            // Base64 JPEG pour l'API Gemini
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+            base64Images.push(dataUrl.split(',')[1]);
+
+            // Conserver le blob HD pour l'enregistrement final Supabase
+            const pageBlob = await canvasToBlobPromise(canvas, 'image/jpeg', 0.92);
+            pendingImageBlobs.push(pageBlob);
+        }
+
+        progressBar.style.width = '55%';
+        statusMsg.textContent = `Déchiffrement IA de ${scannedPages.length} page(s) en cours...`;
+
+        const parsed = await callGeminiVision(apiKey, base64Images);
+
+        progressBar.style.width = '100%';
+        statusMsg.textContent = "Recette déchiffrée avec succès !";
+
+        // Structuration du texte final
+        let formattedContent = "";
+        if (Array.isArray(parsed.ingredients) && parsed.ingredients.length > 0) {
+            formattedContent += "INGRÉDIENTS :\n" + parsed.ingredients.map(ing => ing.startsWith('-') || ing.startsWith('•') ? ing : `- ${ing}`).join('\n') + "\n\n";
+        }
+        if (Array.isArray(parsed.instructions) && parsed.instructions.length > 0) {
+            formattedContent += "PRÉPARATION :\n" + parsed.instructions.map((step, idx) => {
+                const s = step.trim();
+                return /^\d+[\.\)]/.test(s) ? s : `${idx + 1}. ${s}`;
+            }).join('\n');
+        }
+        if (!formattedContent) {
+            formattedContent = parsed.content || "";
+        }
+
+        // Fermer le scanner et pré-remplir le formulaire
+        document.getElementById('scannerModal').classList.add('hidden');
+        resetRecipeForm();
+
+        const pageLabel = scannedPages.length > 1 ? ` (${scannedPages.length} pages)` : '';
+        document.getElementById('modalTitle').textContent = `Recette Déchiffrée via IA${pageLabel}`;
+        document.getElementById('recipeTitle').value = parsed.title || "Nouvelle Recette";
+        document.getElementById('recipeType').value = ['entree', 'plat', 'dessert', 'boisson'].includes(parsed.type) ? parsed.type : 'plat';
+
+        const keywords = Array.isArray(parsed.keywords) && parsed.keywords.length > 0 ? parsed.keywords : ['manuscrit', 'scan'];
+        document.getElementById('recipeKeywords').value = keywords.join(', ');
+        document.getElementById('recipeContent').value = formattedContent;
+
+        renderFormImagePreviews();
+        switchFormTab('text-tab');
+
+        document.getElementById('recipeModal').classList.remove('hidden');
+        showToast(`Recette manuscrite déchiffrée avec succès par l'IA Gemini !`, "success");
+
+    } catch (err) {
+        console.error("Erreur Gemini Vision:", err);
+        showToast(`Erreur IA : ${err.message || 'Impossible de lire la page'}.`, "error");
+    } finally {
+        setTimeout(() => {
+            progressContainer.classList.add('hidden');
+        }, 500);
+    }
+}
+
+/**
+ * Fallback : Reconnaissance locale via Tesseract.js (Uniquement pour textes imprimés)
+ */
+async function runLocalTesseractOcr() {
+    const progressContainer = document.getElementById('ocrProgressContainer');
+    const progressBar = document.getElementById('ocrProgressBar');
+    const statusMsg = document.getElementById('ocrStatusMsg');
+    const noteElem = document.getElementById('ocrEngineNote');
 
     if (!window.Tesseract) {
-        showToast("Le module de reconnaissance de texte (Tesseract) n'est pas encore prêt.", "error");
+        showToast("Le module Tesseract n'est pas encore prêt.", "error");
         return;
     }
 
@@ -671,7 +1063,8 @@ async function runOcrAndFillRecipe() {
 
     progressContainer.classList.remove('hidden');
     progressBar.style.width = '10%';
-    statusMsg.textContent = "Initialisation du moteur OCR en français...";
+    statusMsg.textContent = "Lecture OCR locale en cours...";
+    if (noteElem) noteElem.textContent = "Attention : Tesseract fonctionne uniquement sur du texte dactylographié/imprimé.";
 
     try {
         let extractedTexts = [];
@@ -682,14 +1075,12 @@ async function runOcrAndFillRecipe() {
             const pageNum = i + 1;
             const totalPages = scannedPages.length;
 
-            statusMsg.textContent = `Traitement et lecture de la page ${pageNum} sur ${totalPages}...`;
+            statusMsg.textContent = `Lecture locale page ${pageNum}/${totalPages}...`;
             progressBar.style.width = `${Math.round((i / totalPages) * 80) + 10}%`;
 
-            // Canvas optimisé N&B pour OCR
             const ocrCanvas = createProcessedCanvasForPage(page);
             applyScanFilter(ocrCanvas.getContext('2d'), ocrCanvas.width, ocrCanvas.height, 'scan-bw', 25);
 
-            // Reconnaissance Tesseract
             const result = await Tesseract.recognize(
                 ocrCanvas,
                 'fra',
@@ -705,24 +1096,20 @@ async function runOcrAndFillRecipe() {
             );
 
             extractedTexts.push(result.data.text);
-
-            // Préparer le blob haute résolution du scan traité
             const pageBlob = await canvasToBlobPromise(createProcessedCanvasForPage(page));
             pendingImageBlobs.push(pageBlob);
         }
 
         progressBar.style.width = '100%';
-        statusMsg.textContent = "Toutes les pages ont été transcrites avec succès !";
+        statusMsg.textContent = "Transcription locale terminée !";
 
-        // Fusionner les textes de toutes les pages
         const parsed = parseMultiPageRecipeTexts(extractedTexts);
 
-        // Fermer le scanner et pré-remplir le formulaire
         document.getElementById('scannerModal').classList.add('hidden');
         resetRecipeForm();
 
         const pageLabel = scannedPages.length > 1 ? ` (${scannedPages.length} pages)` : '';
-        document.getElementById('modalTitle').textContent = `Recette Rédigée via Scan${pageLabel}`;
+        document.getElementById('modalTitle').textContent = `Recette Rédigée via OCR local${pageLabel}`;
         document.getElementById('recipeTitle').value = parsed.title || "Nouvelle Recette";
         document.getElementById('recipeType').value = parsed.type;
         document.getElementById('recipeKeywords').value = parsed.keywords.join(', ');
@@ -732,11 +1119,11 @@ async function runOcrAndFillRecipe() {
         switchFormTab('text-tab');
 
         document.getElementById('recipeModal').classList.remove('hidden');
-        showToast(`Recette rédigée depuis ${scannedPages.length} page(s) ! Vous pouvez la relire et l'enregistrer.`, "success");
+        showToast("Recette transcrite via OCR local. Relisez et ajustez si besoin.", "info");
 
     } catch (err) {
-        console.error("Erreur OCR:", err);
-        showToast("Erreur lors de la reconnaissance. Vous pouvez conserver la recette en tant que scan.", "error");
+        console.error("Erreur OCR local:", err);
+        showToast("Erreur OCR local.", "error");
     } finally {
         progressContainer.classList.add('hidden');
     }
